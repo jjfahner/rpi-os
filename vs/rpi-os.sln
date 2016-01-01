@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.23107.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "rpi-os", "rpi-os.vcxproj", "{9F6C2ED4-0168-47EC-88F9-B0368B963888}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM = Debug|ARM
+		Release|ARM = Release|ARM
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9F6C2ED4-0168-47EC-88F9-B0368B963888}.Debug|ARM.ActiveCfg = Debug|ARM
+		{9F6C2ED4-0168-47EC-88F9-B0368B963888}.Debug|ARM.Build.0 = Debug|ARM
+		{9F6C2ED4-0168-47EC-88F9-B0368B963888}.Release|ARM.ActiveCfg = Release|x64
+		{9F6C2ED4-0168-47EC-88F9-B0368B963888}.Release|ARM.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
