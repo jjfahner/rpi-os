@@ -134,7 +134,7 @@ static thread_t* current_thread = &scheduler_thread;
 // Local functions
 //
 static void switch_to_scheduler();
-static void switch_to_thread();
+static void switch_to_thread(thread_t* thread);
 static void thread_stub();
 
 
