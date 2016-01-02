@@ -13,6 +13,8 @@ Currently, the following parts are implemented and mostly stable:
 - Pluggable interrupt handler system
 - PL011 UART
 - On-board LED
+- API written in C
+- Full support for C++, including global instance initialization
 
 Time permitting, I'll be adding support for the different on-board devices, 
 USB and graphics (I'll first have to hook up a monitor though...).
