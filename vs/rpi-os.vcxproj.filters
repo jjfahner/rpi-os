@@ -26,6 +26,7 @@
     <None Include="..\rpi-os.cmake">
       <Filter>Build Files</Filter>
     </None>
+    <None Include="..\README" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\cstubs.c">
