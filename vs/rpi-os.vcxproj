@@ -37,6 +37,7 @@
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\rpi-armtimer.c" />
     <ClCompile Include="..\src\rpi-assert.c" />
+    <ClCompile Include="..\src\rpi-event.c" />
     <ClCompile Include="..\src\rpi-gpio.c" />
     <ClCompile Include="..\src\rpi-interrupts.c" />
     <ClCompile Include="..\src\rpi-led.c" />
@@ -54,6 +55,7 @@
     <ClInclude Include="..\include\rpi-assert.h" />
     <ClInclude Include="..\include\rpi-armtimer.h" />
     <ClInclude Include="..\include\rpi-base.h" />
+    <ClInclude Include="..\include\rpi-event.h" />
     <ClInclude Include="..\include\rpi-gpio.h" />
     <ClInclude Include="..\include\rpi-interrupts.h" />
     <ClInclude Include="..\include\rpi-led.h" />

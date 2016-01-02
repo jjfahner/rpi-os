@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rpi-base.h"
+#include "rpi-event.h"
 #include "rpi-mutex.h"
 
 
@@ -63,6 +64,13 @@ EXTERN_C uint32_t thread_is_scheduler_thread();
 
 
 //
+// Print the list of threads
+//
+EXTERN_C void thread_print_list();
+
+
+
+//
 // Create a thread
 //
 EXTERN_C thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t thread_fun, uint32_t thread_arg);
@@ -108,9 +116,16 @@ EXTERN_C void thread_sleep_ms(uint32_t milliseconds);
 
 
 //
+// Wait for an event
+//
+EXTERN_C void thread_wait_event(event_t* event);
+
+
+
+//
 // Wait for a mutex
 //
-EXTERN_C void thread_wait_mutex(struct mutex_t* mutex);
+EXTERN_C void thread_wait_mutex(mutex_t* mutex);
 
 
 

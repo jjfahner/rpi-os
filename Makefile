@@ -239,6 +239,33 @@ src/rpi-assert.c.s:
 	$(MAKE) -f CMakeFiles\rpi-os.dir\build.make CMakeFiles/rpi-os.dir/src/rpi-assert.c.s
 .PHONY : src/rpi-assert.c.s
 
+src/rpi-event.obj: src/rpi-event.c.obj
+
+.PHONY : src/rpi-event.obj
+
+# target to build an object file
+src/rpi-event.c.obj:
+	$(MAKE) -f CMakeFiles\rpi-os.dir\build.make CMakeFiles/rpi-os.dir/src/rpi-event.c.obj
+.PHONY : src/rpi-event.c.obj
+
+src/rpi-event.i: src/rpi-event.c.i
+
+.PHONY : src/rpi-event.i
+
+# target to preprocess a source file
+src/rpi-event.c.i:
+	$(MAKE) -f CMakeFiles\rpi-os.dir\build.make CMakeFiles/rpi-os.dir/src/rpi-event.c.i
+.PHONY : src/rpi-event.c.i
+
+src/rpi-event.s: src/rpi-event.c.s
+
+.PHONY : src/rpi-event.s
+
+# target to generate assembly for a file
+src/rpi-event.c.s:
+	$(MAKE) -f CMakeFiles\rpi-os.dir\build.make CMakeFiles/rpi-os.dir/src/rpi-event.c.s
+.PHONY : src/rpi-event.c.s
+
 src/rpi-gpio.obj: src/rpi-gpio.c.obj
 
 .PHONY : src/rpi-gpio.obj
@@ -567,6 +594,9 @@ help:
 	@echo ... src/rpi-assert.obj
 	@echo ... src/rpi-assert.i
 	@echo ... src/rpi-assert.s
+	@echo ... src/rpi-event.obj
+	@echo ... src/rpi-event.i
+	@echo ... src/rpi-event.s
 	@echo ... src/rpi-gpio.obj
 	@echo ... src/rpi-gpio.i
 	@echo ... src/rpi-gpio.s

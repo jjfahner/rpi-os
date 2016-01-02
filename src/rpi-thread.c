@@ -15,9 +15,10 @@
 #define THREAD_STATE_SCHEDULED		1
 #define THREAD_STATE_RUNNING		2
 #define THREAD_STATE_TIMED_WAIT		3
-#define THREAD_STATE_MUTEX_WAIT		4
-#define THREAD_STATE_SUSPENDED		5
-#define THREAD_STATE_STOPPED		6
+#define THREAD_STATE_EVENT_WAIT		4
+#define THREAD_STATE_MUTEX_WAIT		5
+#define THREAD_STATE_SUSPENDED		6
+#define THREAD_STATE_STOPPED		7
 
 
 
@@ -73,8 +74,12 @@ typedef struct
 	uint32_t		wait_lo;
 	uint32_t		wait_hi;
 
-	// Wait mutex
-	mutex_t*		wait_mutex;
+	// Wait objects
+	union {
+		uint32_t	wait_object;
+		event_t*	wait_event;
+		mutex_t*	wait_mutex;
+	};
 } thread_t;
 
 
@@ -119,8 +124,8 @@ static void thread_stub();
 //
 // External functions
 //
-uint32_t mutex_trylock_thread(mutex_t* mutex, thread_id_t thread_id);
-
+uint32_t event_acquire_thread(event_t* event, thread_id_t thread_id);
+uint32_t mutex_acquire_thread(mutex_t* mutex, thread_id_t thread_id);
 
 
 //
@@ -274,6 +279,26 @@ void thread_sleep_ms(uint32_t milliseconds)
 
 
 //
+// Wait for an event
+//
+void thread_wait_event(event_t* event)
+{
+	ASSERT(!thread_is_scheduler_thread());
+
+	// Mark the thread as waiting for event
+	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
+	current_thread->thread_state = THREAD_STATE_EVENT_WAIT;
+
+	// Store the mutex with the thread
+	current_thread->wait_event = event;
+
+	// Yield to the scheduler thread
+	switch_to_scheduler();
+}
+
+
+
+//
 // Thread wait for mutex
 //
 void thread_wait_mutex(mutex_t* mutex)
@@ -375,6 +400,39 @@ void switch_to_thread(thread_t* thread)
 
 
 //
+// Dump the thread list
+//
+void thread_print_list()
+{
+	for (int i = 0; i < THREAD_MAX_COUNT; i++)
+	{
+		thread_t* thread = thread_list[i];
+		if (thread == NULL)
+			continue;
+
+		const char* thread_state;
+		switch (thread->thread_state)
+		{
+		case THREAD_STATE_STARTING:		thread_state = "Starting";	break;
+		case THREAD_STATE_SCHEDULED:	thread_state = "Scheduled"; break;
+		case THREAD_STATE_RUNNING:		thread_state = "Running";	break;
+		case THREAD_STATE_TIMED_WAIT:	thread_state = "TimedWait"; break;
+		case THREAD_STATE_EVENT_WAIT:	thread_state = "EventWait"; break;
+		case THREAD_STATE_MUTEX_WAIT:	thread_state = "MutexWait"; break;
+		case THREAD_STATE_SUSPENDED:	thread_state = "Suspended"; break;
+		case THREAD_STATE_STOPPED:		thread_state = "Stopped";	break;
+		default:						thread_state = "Unknown";	break;
+		}
+
+		char buf[1024];
+		sprintf(buf, "%3d(%10s): id %8x, state %10s\n", i, thread->thread_name, thread->thread_id, thread_state);
+		uart_puts_nolock(buf);
+	}
+}
+
+
+
+//
 // This is the scheduler thread
 //
 void thread_scheduler()
@@ -391,36 +449,34 @@ void thread_scheduler()
 	// Scheduler main loop
 	while (1)
 	{
-		// Advance to the next slot
-		cur_idx = (cur_idx + 1) & (THREAD_MAX_COUNT - 1);
-		thread_t* next_thread = thread_list[cur_idx];
+		// Calculate next slot, fold to zero at THREAD_MAX_COUNT
+		cur_idx = ((cur_idx + 1) & (THREAD_MAX_COUNT - 1));
+
+		// Get the thread in the slot, which may be NULL
+		thread_t* thread = thread_list[cur_idx];
+		if (thread == NULL)
+			continue;
 
 		// The scheduler thread should never appear in the thread list
-		ASSERT(next_thread != &scheduler_thread);
+		ASSERT(thread != &scheduler_thread);
 
 		// If the current thread matches the last one that ran, all threads have
 		// been checked and found not eligible to run, so wait for interrupts.
 		// The system timer will resume the scheduler when its interrupt occurs.
-		// This effectively keeps the cpu in low power mode unless there is work.
+		// This effectively keeps the CPU in low power mode unless there is work.
 		if (cur_idx == prv_idx)
 			_wait_for_interrupt();
 
-		// If there's no thread entry in this slot, continue
-		if (next_thread == NULL)
-			continue;
-
 		// Handle thread states. Note that all states should be handled here!
-		switch (next_thread->thread_state)
+		switch (thread->thread_state)
 		{
 		// Starting thread, cannot run yet
 		case THREAD_STATE_STARTING:
 			continue;
 
-		// Next scheduled thread, switch to it and continue when it yields
+		// Next scheduled thread, run it
 		case THREAD_STATE_SCHEDULED:
-			prv_idx = cur_idx;
-			switch_to_thread(next_thread);
-			continue;
+			break;
 
 		// Running thread, should not occur!
 		case THREAD_STATE_RUNNING:
@@ -429,20 +485,20 @@ void thread_scheduler()
 
 		// Thread waiting for timespan
 		case THREAD_STATE_TIMED_WAIT:
-			if (next_thread->wait_lo <= rpi_sys_timer->clo && next_thread->wait_hi <= rpi_sys_timer->chi)
-			{
-				prv_idx = cur_idx;
-				switch_to_thread(next_thread);
-			}
+			if (thread->wait_lo <= rpi_sys_timer->clo && thread->wait_hi <= rpi_sys_timer->chi)
+				break;
+			continue;
+
+		// Thread waiting for event
+		case THREAD_STATE_EVENT_WAIT:
+			if (event_acquire_thread(thread->wait_event, thread->thread_id))
+				break;
 			continue;
 
 		// Thread waiting for mutex
 		case THREAD_STATE_MUTEX_WAIT:
-			if (mutex_trylock_thread(next_thread->wait_mutex, next_thread->thread_id))
-			{
-				prv_idx = cur_idx;
-				switch_to_thread(next_thread);
-			}
+			if (mutex_acquire_thread(thread->wait_mutex, thread->thread_id))
+				break;
 			continue;
 
 		// Suspended thread, continue scanning
@@ -451,15 +507,24 @@ void thread_scheduler()
 
 		// Stopped thread, clear thread data and continue
 		case THREAD_STATE_STOPPED:
-			free(next_thread->stack_base);
-			free(next_thread);
+			free(thread->stack_base);
+			free(thread);
 			thread_list[cur_idx] = NULL;
 			continue;
 		}
 
-		// Error, should never get here
-		ASSERT(false);
-		break;
+		// Mark this slot as the one to scan from. When the scan returns to this point
+		// without finding an eligible thread, the list has been scanned completely.
+		prv_idx = cur_idx;
+
+		// Clear the wait object that the thread was waiting for
+		thread->wait_object = 0;
+
+		// Switch to the thread that was found
+		switch_to_thread(thread);
+
+		// We've returned from the thread, check that this is the scheduler thread
+		ASSERT(thread_is_scheduler_thread());
 	}
 }
 

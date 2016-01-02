@@ -12,6 +12,7 @@ add_executable( rpi-os
     src/cstubs.c
 	src/rpi-assert.c
     src/rpi-armtimer.c
+	src/rpi-event.c
     src/rpi-gpio.c
     src/rpi-interrupts.c
 	src/rpi-led.c
