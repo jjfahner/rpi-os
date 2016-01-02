@@ -1,6 +1,9 @@
-RPi-OS is a simple operating system for the Raspberry Pi. Its goal is to provide a basis on which applications can be built 
-that do not require the support of a full operating system such as Linux. Secondarily, it keeps me entertained on rainy
-days, of which there are a lot in this country...
+RPi-OS is a simple operating system for the Raspberry Pi. Its goal is to 
+provide a basis on which applications can be built that do not require 
+the support of a full operating system such as Linux. 
+
+Secondarily, it keeps me entertained on rainy days, of which there are 
+a lot in The Netherlands...
 
 Currently, the following parts are implemented and mostly stable:
 
@@ -11,7 +14,19 @@ Currently, the following parts are implemented and mostly stable:
 - PL011 UART
 - On-board LED
 
-Time permitting, I'll be adding support for the different on-board devices, USB and graphics (I'll first have to hook up
-a monitor though...).
+Time permitting, I'll be adding support for the different on-board devices, 
+USB and graphics (I'll first have to hook up a monitor though...).
 
-RPi-OS currently only supports the RPi-B+, mostly because I don't have any other versions to develop or test on.
+RPi-OS currently only supports the RPi-B+, mostly because I don't have any 
+other versions to develop or test on.
+
+Many thanks for the amazing ground work done by:
+
+- Brian, who's Bare Metal Programming tutorial has been my starting point
+  for the RPi (http://www.valvers.com/open-software/raspberry-pi/)
+- Goswin von Brederlow, author of raspbootin, the UART bootloader that has
+  saved my RPi and SD card from breaking down after so many reboots:
+  https://github.com/mrvn/raspbootin
+- All of the amazing people on the RPi forum that have figured out all of
+  the nitty-gritty details of the RPi: 
+  https://www.raspberrypi.org/forums/viewforum.php?f=72
