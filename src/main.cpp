@@ -1,3 +1,21 @@
+/*
+	Licensed to the Apache Software Foundation (ASF) under one
+	or more contributor license agreements.  See the NOTICE file
+	distributed with this work for additional information
+	regarding copyright ownership.  The ASF licenses this file
+	to you under the Apache License, Version 2.0 (the
+	"License"); you may not use this file except in compliance
+	with the License.  You may obtain a copy of the License at
+
+	  http://www.apache.org/licenses/LICENSE-2.0
+
+	Unless required by applicable law or agreed to in writing,
+	software distributed under the License is distributed on an
+	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+	KIND, either express or implied.  See the License for the
+	specific language governing permissions and limitations
+	under the License.
+*/
 #include "rpi-uart.h"
 #include "rpi-led.h"
 #include "rpi-systimer.h"
@@ -117,10 +135,28 @@ static void uart_thread(uint32_t thread_arg)
 
 static void time_thread(uint32_t thread_arg)
 {
+	uint32_t n = 0;
+	
+	uint32_t time_us = rpi_sys_timer->clo;
 	while (1)
 	{
-		TRACE("Timestamp");
-		thread_sleep_ms(100);
+		uint32_t usec = sys_timer_uptime_usec() % 1000000;
+		uint32_t msec = sys_timer_uptime_msec() % 1000;
+
+		uint32_t tsec = sys_timer_uptime_sec();
+		uint32_t sec = tsec % 60;
+		tsec /= 60;
+		uint32_t min = tsec % 60;
+		tsec /= 60;
+		uint32_t hrs = tsec % 24;
+		tsec /= 24;
+		uint32_t day = tsec;
+
+		TRACE("Timestamp %5d, d=%02u, h=%02u, m=%02u, s=%02u, m=%03u, u=%03u, clo=%u", n++, 
+			day, hrs, min, sec, msec, usec, rpi_sys_timer->clo);
+
+		thread_sleep_us(1000000 - (rpi_sys_timer->clo - time_us));
+		time_us += 1000000;
 	}
 }
 
@@ -145,19 +181,19 @@ extern "C" void rpi_main(uint32_t thread_arg)
 	thread_create(4 * 1024, "Time thread", &time_thread, 0);
 
 	// Create some worker threads
-	for (int i = 0; i < 5; i++)
-		create_thread();
+// 	for (int i = 0; i < 5; i++)
+// 		create_thread();
 
 	// Create an event, a producer and some consumers
-	pc_event = event_create("Some event name", EVENT_TYPE_AUTO);
-	thread_create(4 * 1024, "Producer", &producer_thread, 0);
-	for (int i = 0; i < 5; i++)
-		thread_create(4 * 1024, "Consumer", &consumer_thread, i);
+// 	pc_event = event_create("Some event name", EVENT_TYPE_AUTO);
+// 	thread_create(4 * 1024, "Producer", &producer_thread, 0);
+// 	for (int i = 0; i < 5; i++)
+// 		thread_create(4 * 1024, "Consumer", &consumer_thread, i);
 
 	// Main loop
 	while (1)
 	{
-		thread_print_list();
+//		thread_print_list();
 		thread_sleep_ms(1000);
 	}
 }

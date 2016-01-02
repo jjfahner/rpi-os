@@ -1,10 +1,28 @@
+/*
+	Licensed to the Apache Software Foundation (ASF) under one
+	or more contributor license agreements.  See the NOTICE file
+	distributed with this work for additional information
+	regarding copyright ownership.  The ASF licenses this file
+	to you under the Apache License, Version 2.0 (the
+	"License"); you may not use this file except in compliance
+	with the License.  You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+	Unless required by applicable law or agreed to in writing,
+	software distributed under the License is distributed on an
+	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+	KIND, either express or implied.  See the License for the
+	specific language governing permissions and limitations
+	under the License.
+*/
 #include "rpi-systimer.h"
 #include "rpi-armtimer.h"
 #include "rpi-led.h"
 #include "rpi-interrupts.h"
 #include "asm-functions.h"
 
-
+#include <time.h>
 
 //
 // Timer struct
@@ -17,6 +35,14 @@ typedef struct
 	uint32_t			deadline_hi;
 	sys_timer_proc_t	callback;
 } sys_timer_t;
+
+
+
+//
+// Current uptime
+//
+static uint32_t sys_uptime_msec;
+static uint32_t sys_uptime_sec;
 
 
 
@@ -37,12 +63,42 @@ static uint32_t sys_timer_interval = 0x1000;
 
 
 //
+// Current system uptime in microseconds, wraps after ~1.1 hours
+//
+uint32_t sys_timer_uptime_usec()
+{
+	return rpi_sys_timer->clo;
+}
+
+
+
+//
+// Current system uptime in milliseconds, wraps to zero after ~49.7 days
+//
+uint32_t sys_timer_uptime_msec()
+{
+	return sys_uptime_msec;
+}
+
+
+
+//
+// Current system uptime in seconds, wraps after ~196.1 years
+//
+uint32_t sys_timer_uptime_sec()
+{
+	return sys_uptime_sec;
+}
+
+
+
+//
 // Wait for the system timer
 //
-void sys_timer_wait_us( uint32_t us )
+void sys_timer_wait_usec(uint32_t microseconds)
 {
     volatile uint32_t ts = rpi_sys_timer->clo;
-    while( ( rpi_sys_timer->clo - ts ) < us )
+    while((rpi_sys_timer->clo - ts) < microseconds)
 		;
 }
 
@@ -51,9 +107,9 @@ void sys_timer_wait_us( uint32_t us )
 //
 // Wait for the system timer
 //
-void sys_timer_wait_ms(uint32_t ms)
+void sys_timer_wait_msec(uint32_t milliseconds)
 {
-	sys_timer_wait_us(ms * 1000);
+	sys_timer_wait_usec(milliseconds * 1000);
 }
 
 
@@ -177,7 +233,75 @@ void invoke_timers()
 //
 static inline void sys_timer_set_compare()
 {
-	rpi_sys_timer->c1 = (rpi_sys_timer->clo & ~(sys_timer_interval - 1)) + sys_timer_interval;
+	// Initialize previous interrupt time with current time
+	static uint32_t prev_time = 0;
+	if (prev_time == 0)
+		prev_time = rpi_sys_timer->clo;
+
+	// Set next time as previous time plus interval
+	uint32_t next_time = (prev_time & ~(sys_timer_interval - 1)) + sys_timer_interval;
+	rpi_sys_timer->c1 = next_time;
+
+	// Set previous time as current time
+	prev_time = next_time;
+}
+
+
+
+//
+// Update system uptime
+//
+static inline void update_sys_uptime()
+{
+	// Previous time values
+	static uint32_t prv_time_usec = 0;
+	static uint32_t prv_time_msec = 0;
+
+	////////// First update uptime in milliseconds
+
+	// Get current system time in us
+	uint32_t cur_time_usec = rpi_sys_timer->clo;
+
+	// Calculate us difference with previous update
+	uint32_t diff_time_usec = prv_time_usec < cur_time_usec ?
+		cur_time_usec - prv_time_usec :				// Normal case
+		UINT32_MAX - prv_time_usec + cur_time_usec;	// Counter wrapped
+
+	// Early out if less than a millisecond elapsed
+	if (diff_time_usec < 1000)
+		return;
+
+	// Calculate number of whole milliseconds elapsed
+	uint32_t diff_time_ms = diff_time_usec / 1000;
+
+	// Update previous update value with number of whole milliseconds elapsed
+	prv_time_usec += diff_time_ms * 1000;
+
+	// Update uptime_ms
+	sys_uptime_msec += diff_time_ms;
+
+	////////// Then update uptime in seconds
+
+	// Get current uptime in ms
+	uint32_t cur_time_msec = sys_uptime_msec;
+
+	// Calculate ms difference with previous update
+	uint32_t diff_time_msec = prv_time_msec < sys_uptime_msec ?
+		cur_time_msec - prv_time_msec :				// Normal case
+		UINT32_MAX - prv_time_msec + cur_time_msec;	// Counter wrapped
+
+	// Early out if less than a second elapsed
+	if (diff_time_msec < 1000)
+		return;
+
+	// Calculate number of whole seconds elapsed
+	uint32_t diff_time_sec = diff_time_msec / 1000;
+
+	// Update previous update value with number of whole seconds elapsed
+	prv_time_msec += diff_time_sec * 1000;
+
+	// Update uptime_ms
+	sys_uptime_sec += diff_time_sec;
 }
 
 
@@ -189,6 +313,9 @@ void sys_timer_interrupt()
 {
 	// Clear the interrupt bit
 	rpi_sys_timer->cs = (1 << 1);
+
+	// Update uptime
+	update_sys_uptime();
 
 	// Invoke the timers
 	invoke_timers();
