@@ -1,29 +1,29 @@
-/*
-	Licensed to the Apache Software Foundation (ASF) under one
-	or more contributor license agreements.  See the NOTICE file
-	distributed with this work for additional information
-	regarding copyright ownership.  The ASF licenses this file
-	to you under the Apache License, Version 2.0 (the
-	"License"); you may not use this file except in compliance
-	with the License.  You may obtain a copy of the License at
-
-	  http://www.apache.org/licenses/LICENSE-2.0
-
-	Unless required by applicable law or agreed to in writing,
-	software distributed under the License is distributed on an
-	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-	KIND, either express or implied.  See the License for the
-	specific language governing permissions and limitations
-	under the License.
-*/
+#
+#	Licensed to the Apache Software Foundation (ASF) under one
+#	or more contributor license agreements.  See the NOTICE file
+#	distributed with this work for additional information
+#	regarding copyright ownership.  The ASF licenses this file
+#	to you under the Apache License, Version 2.0 (the
+#	"License"); you may not use this file except in compliance
+#	with the License.  You may obtain a copy of the License at
+#
+#	  http:#www.apache.org/licenses/LICENSE-2.0
+#
+#	Unless required by applicable law or agreed to in writing,
+#	software distributed under the License is distributed on an
+#	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#	KIND, either express or implied.  See the License for the
+#	specific language governing permissions and limitations
+#	under the License.
+#
 .section ".text.startup"
 .global _start
 
 
 
-//
-// ARM Processor Modes (section A2.2)
-//
+#
+# ARM Processor Modes (section A2.2)
+#
 .equ    CPSR_MODE_USER,         0x10
 .equ    CPSR_MODE_FIQ,          0x11
 .equ    CPSR_MODE_IRQ,          0x12
@@ -34,38 +34,38 @@
 
 
 
-//
-// Program Status Registers (section A2.5)
-//
+#
+# Program Status Registers (section A2.5)
+#
 .equ    CPSR_IRQ_INHIBIT,       0x80
 .equ    CPSR_FIQ_INHIBIT,       0x40
 .equ    CPSR_THUMB,             0x20
 
 
 
-//
-// The address at which the kernel is loaded
-// TODO move kernel load address to 0x0000?
-//
+#
+# The address at which the kernel is loaded
+# TODO move kernel load address to 0x0000?
+#
 .equ	KERNEL_LOAD_ADDRESS,		0x8000
 
 
 
-//
-// Stack addresses for the supervisor and interrupt handler
-//
+#
+# Stack addresses for the supervisor and interrupt handler
+#
 .equ	SUPERVISOR_STACK_ADDRESS,	0x8000
 .equ	INTERRUPT_STACK_ADDRESS,	0x4000
 
 
 
-//
-// Entry point of rpi-os
-//
+#
+# Entry point of rpi-os
+#
 _start:
-	//
-	// Interrupt jump table
-	//
+	#
+	# Interrupt jump table
+	#
     ldr		pc, _reset_h
     ldr		pc, _undefined_instruction_vector_h
     ldr		pc, _software_interrupt_vector_h
@@ -76,9 +76,9 @@ _start:
     ldr		pc, _fast_interrupt_vector_h
 
 
-	//
-	// Interrupt table, located directly after the jump table
-	//
+	#
+	# Interrupt table, located directly after the jump table
+	#
 	_reset_h:                           .word   _reset_
 	_undefined_instruction_vector_h:    .word   undefined_instruction_vector
 	_software_interrupt_vector_h:       .word   software_interrupt_vector
@@ -90,24 +90,24 @@ _start:
 
 
 
-//
-// Program reset
-//
-// Note: ARM starts in supervisor mode (ARM Section A2.2)
-//
+#
+# Program reset
+#
+# Note: ARM starts in supervisor mode (ARM Section A2.2)
+#
 _reset_:
-	//
-	// If the reset instruction is already at 0x0000, there's been a restart
-	//
+	#
+	# If the reset instruction is already at 0x0000, there's been a restart
+	#
 	ldr		r0, =_reset_h
 	mov		r1, #0
 	ldr		r1, [r1]
 	cmp		r0, r1
 	beq		_restart
 
-	//
-    // If the kernel is not loaded at 0x0000 the interrupt jump tables must be copied to 0x0000
-	//
+	#
+    # If the kernel is not loaded at 0x0000 the interrupt jump tables must be copied to 0x0000
+	#
     mov     r0, #KERNEL_LOAD_ADDRESS
 	cmp		r0, #0
 	beq		_copy_done
@@ -120,27 +120,27 @@ _copy_done:
 
 
 
-	//
-	// Setup the interrupt stack
-	//
+	#
+	# Setup the interrupt stack
+	#
     mov		r0, #(CPSR_MODE_IRQ | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT)
     msr		cpsr_c, r0
     mov		sp, #INTERRUPT_STACK_ADDRESS
 
 
 
-    //
-	// Setup the supervisor stack
-	//
+    #
+	# Setup the supervisor stack
+	#
     mov		r0, #(CPSR_MODE_SVR | CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT )
     msr		cpsr_c, r0
     mov		sp, #SUPERVISOR_STACK_ADDRESS
 
     
 
-	//
-	// Setup the VFP coprocessor
-	//
+	#
+	# Setup the VFP coprocessor
+	#
     mrc		p15, #0, r1, c1, c0, #2
     orr		r1, r1, #(0xf << 20)
     mcr		p15, #0, r1, c1, c0, #2
@@ -151,9 +151,9 @@ _copy_done:
 
 
 
-	//
-	// Zero the BSS section
-	//
+	#
+	# Zero the BSS section
+	#
 	movs	r0, #0
 	ldr		r1, =__bss_start__
 	ldr		r2, =__bss_end__
@@ -164,16 +164,16 @@ _bss_loop:
 
 
 
-	//
-	// Call _cmain fuction, should not return
-	//
+	#
+	# Call _cmain fuction, should not return
+	#
     bl      _cmain
 
 	
 
-	//
-    // Disable interrupts and spin
-	//
+	#
+    # Disable interrupts and spin
+	#
 	bl		_disable_interrupts
 _idle_loop:
 	bl		_wait_for_interrupt
@@ -181,9 +181,9 @@ _idle_loop:
 
 
 
-	//
-	// A restart has been triggered
-	//
+	#
+	# A restart has been triggered
+	#
 _restart:
 	bl		_led_blink
 	bl		_restart

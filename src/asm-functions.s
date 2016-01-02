@@ -1,28 +1,28 @@
-/*
-	Licensed to the Apache Software Foundation (ASF) under one
-	or more contributor license agreements.  See the NOTICE file
-	distributed with this work for additional information
-	regarding copyright ownership.  The ASF licenses this file
-	to you under the Apache License, Version 2.0 (the
-	"License"); you may not use this file except in compliance
-	with the License.  You may obtain a copy of the License at
+#
+#	Licensed to the Apache Software Foundation (ASF) under one
+#	or more contributor license agreements.  See the NOTICE file
+#	distributed with this work for additional information
+#	regarding copyright ownership.  The ASF licenses this file
+#	to you under the Apache License, Version 2.0 (the
+#	"License"); you may not use this file except in compliance
+#	with the License.  You may obtain a copy of the License at
+#
+#	  http:#www.apache.org/licenses/LICENSE-2.0
+#
+#	Unless required by applicable law or agreed to in writing,
+#	software distributed under the License is distributed on an
+#	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#	KIND, either express or implied.  See the License for the
+#	specific language governing permissions and limitations
+#	under the License.
+#
 
-	  http://www.apache.org/licenses/LICENSE-2.0
-
-	Unless required by applicable law or agreed to in writing,
-	software distributed under the License is distributed on an
-	"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-	KIND, either express or implied.  See the License for the
-	specific language governing permissions and limitations
-	under the License.
-*/
-
-// Functions in the text segment
+# Functions in the text segment
 .section ".text.functions"
 
 
 
-// Globally visible functions
+# Globally visible functions
 .global _get_stack_pointer
 .global _spin
 .global _led_blink
@@ -33,7 +33,7 @@
 .global _switch_to_thread
 
 
-// Return the stack pointer value
+# Return the stack pointer value
 _get_stack_pointer:
     str     sp, [sp]
     ldr     r0, [sp]
@@ -41,81 +41,81 @@ _get_stack_pointer:
 
 
 
-//
-// Enable interrupts. Returns old mode.
-//
-// extern uint32_t _enable_interrupts(uint32_t mode);
-//
+#
+# Enable interrupts. Returns old mode.
+#
+# extern uint32_t _enable_interrupts(uint32_t mode);
+#
 _enable_interrupts:
-    mrs     r0, cpsr			// Store current mode in r1
-    bic     r0, r0, #0xC0		// Add new mode into r2
-    msr     cpsr_c, r0			// Enable new mode from r2
+    mrs     r0, cpsr			# Store current mode in r1
+    bic     r0, r0, #0xC0		# Add new mode into r2
+    msr     cpsr_c, r0			# Enable new mode from r2
     bx		lr
 
 
 
-//
-// Disable interrupts. Returns old mode.
-//
-// extern uint32_t _disable_interrupts(uint32_t mode);
-//
+#
+# Disable interrupts. Returns old mode.
+#
+# extern uint32_t _disable_interrupts(uint32_t mode);
+#
 _disable_interrupts:
-    mrs     r0, cpsr			// Store current mode in r1
-    orr     r0, r0, #0xC0		// Remove input flags
-    msr     cpsr_c, r0			// Enable new mode
+    mrs     r0, cpsr			# Store current mode in r1
+    orr     r0, r0, #0xC0		# Remove input flags
+    msr     cpsr_c, r0			# Enable new mode
     bx		lr
 
 
 
-//
-// Get enabled interrupts
-//
-// uint32_t _get_interrupts();
-//
+#
+# Get enabled interrupts
+#
+# uint32_t _get_interrupts();
+#
 _get_interrupts:
 	mrs		r0, cpsr
 	bx		lr
 
 
 
-//
-// Suspend cpu until interrupt occurs
-//
-// extern void _wait_for_interrupt(void);
-//
+#
+# Suspend cpu until interrupt occurs
+#
+# extern void _wait_for_interrupt(void);
+#
 _wait_for_interrupt:
 	mcr		p15, 0, R0, c7, c0, 4
 	bx		lr
 
 
 
-//
-// Instruction memory barrier
-//
-// extern void _isb();
-//
+#
+# Instruction memory barrier
+#
+# extern void _isb();
+#
 _isb:
 	mcr		p15, 0, R0, c7,  c5, 4
 	bx		lr
 
 
 
-//
-// Data memory barrier
-//
-// extern void _dmb();
-//
+#
+# Data memory barrier
+#
+# extern void _dmb();
+#
 _dmb:
 	mcr		p15, 0, R0, c7, c10, 5
 	bx		lr
 
 
 
-//
-// Spin for the specified number of cycles
-//
-// extern void _spin(uint32_t cycles);
-//
+#
+# Spin for the specified number of cycles
+#
+# extern void _spin(uint32_t cycles);
+#
 _spin: 
 	subs	r0, #1
 	bne		_spin
@@ -123,11 +123,11 @@ _spin:
 
 
 
-//
-// Blink the LED
-//
-// extern void _led_blink();
-//
+#
+# Blink the LED
+#
+# extern void _led_blink();
+#
 _led_blink:
 	ldr		r0,=0x20200000
 	mov		r1,#0x8000
@@ -146,11 +146,11 @@ _wait_2:
 
 
 
-//
-// Switch from one thread to another
-//
-// extern void _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);
-//
+#
+# Switch from one thread to another
+#
+# extern void _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);
+#
 _switch_to_thread:
 	stmia	r0, {r0-r14}
 	ldmia	r1, {r0-r14}
