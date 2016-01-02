@@ -99,9 +99,6 @@
     <ClInclude Include="..\include\rpi-systimer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\rpi-timer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\rpi-types.h">
       <Filter>Header Files</Filter>
     </ClInclude>

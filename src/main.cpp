@@ -40,7 +40,7 @@ static void thread_fun(uint32_t thread_arg)
 {
 	for (int i = 0; i < 25; i++)
 	{
-		TRACE("Thread %u", thread_arg);
+		printf("Thread %u\n", thread_arg);
 		thread_sleep_ms((thread_arg % 4) * 100);
 	}
 
@@ -68,6 +68,16 @@ static void uart_thread(uint32_t thread_arg)
 }
 
 
+static void time_thread(uint32_t thread_arg)
+{
+	while (1)
+	{
+		TRACE("Timestamp");
+		thread_sleep_ms(100);
+	}
+}
+
+
 
 //
 // Application entry point
@@ -80,11 +90,12 @@ extern "C" void rpi_main(uint32_t thread_arg)
 	// Create a thread that monitors the UART for incoming data
 	thread_create(4 * 1024, "UART thread", &uart_thread, 0);
 
+	// Create a time traces
+	thread_create(4 * 1024, "Time thread", &time_thread, 0);
+
 	// Create some worker threads
-	create_thread();
-	create_thread();
-	create_thread();
-	create_thread();
+	for (int i = 0; i < 5; i++)
+		create_thread();
 
 	// Suspend the main thread, the created threads will do their work
 	thread_suspend();

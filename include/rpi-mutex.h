@@ -3,6 +3,12 @@
 #include "rpi-base.h"
 
 
+//
+// Maximum mutex name length
+//
+#define MUTEX_NAME_LEN	32
+
+
 
 //
 // Mutex type
@@ -14,7 +20,7 @@ typedef struct mutex_t mutex_t;
 //
 // Create a mutex
 //
-EXTERN_C mutex_t* mutex_create();
+EXTERN_C mutex_t* mutex_create(const char* name);
 
 
 

@@ -1,6 +1,6 @@
 include(CMakeForceCompiler)
 
-# The Generic system name is used for embedded targets (targets without OS) in CMake
+# Set to generic system to enable cross compilation
 set( CMAKE_SYSTEM_NAME          Generic )
 set( CMAKE_SYSTEM_PROCESSOR     BCM2835 )
 
@@ -19,14 +19,18 @@ CMAKE_FORCE_CXX_COMPILER( ${TC_PATH}${CROSS_COMPILE}g++ GNU )
 set( CMAKE_OBJCOPY ${TC_PATH}${CROSS_COMPILE}objcopy
     CACHE FILEPATH "The toolchain objcopy command " FORCE )
 
-# Set the CMAKE C flags (which should also be used by the assembler!
+# Set the CMAKE C flags which will be passed to the C, C++ and ASM compilers
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpu=vfp" )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfloat-abi=hard" )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv6zk" )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mtune=arm1176jzf-s" )
-set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O1" )
+set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3" )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g" )
 set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostartfiles" )
+
+# Enable all errors, then disable formatting errors
+set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall" )
+set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wformat=0" )
 
 # Copy the C flags to CXX and ASM
 set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}" )

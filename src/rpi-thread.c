@@ -79,35 +79,41 @@ typedef struct
 
 
 
+//
+// Setup the scheduler thread data
+//
+thread_t scheduler_thread = { THREAD_SCHEDULER_THREAD_ID, THREAD_STATE_RUNNING, "scheduler", NULL, 0, 0x4000, (void*)0x8000 };
+
+
 
 //
 // Thread id counter
 //
-static uint32_t thread_id_counter = 0;
+static uint32_t thread_id_counter = THREAD_SCHEDULER_THREAD_ID + 1;
 
 
 
 //
-// Thread pointers
+// Thread list
 //
-thread_t* thread_list[THREAD_MAX_COUNT];
-thread_t* current_thread;
+static thread_t* thread_list[THREAD_MAX_COUNT];
 
 
 
 //
-// Registers of the scheduler thread
+// Current thread
 //
-registers_t scheduler_regs;
+static thread_t* current_thread = &scheduler_thread;
 
 
 
 //
 // Local functions
 //
-static void thread_stub();
 static void switch_to_scheduler();
 static void switch_to_thread();
+static void thread_stub();
+
 
 
 //
@@ -128,7 +134,7 @@ thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t th
 	memset(thread, 0, sizeof(thread_t));
 
 	// Set thread id and state
-	thread->thread_id = ++thread_id_counter;
+	thread->thread_id = thread_id_counter++;
 	thread->thread_state = THREAD_STATE_STARTING;
 
 	// Copy thread name
@@ -148,13 +154,17 @@ thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t th
 	thread->registers.sp = (uint32_t)((char*)thread->stack_base + thread->stack_size);
 	thread->registers.lr = (uint32_t)&thread_stub; 
 
-	// Add the thread to the thread list
-	for (int i = 0; i < THREAD_MAX_COUNT; i++)
-		if (thread_list[i] == NULL)
+	// Insert the thread in the thread list
+	int insert_pos = 0;
+	for (; insert_pos < THREAD_MAX_COUNT; insert_pos++)
+	{
+		if (thread_list[insert_pos] == NULL)
 		{
-			thread_list[i] = thread;
+			thread_list[insert_pos] = thread;
 			break;
 		}
+	}
+	ASSERT(insert_pos < THREAD_MAX_COUNT);
 
 	// Now that the thread is ready to run, mark it as scheduled
 	thread->thread_state = THREAD_STATE_SCHEDULED;
@@ -170,6 +180,8 @@ thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t th
 //
 void thread_exit()
 {
+	ASSERT(!thread_is_scheduler_thread());
+
 	// Mark the thread as exiting
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_STOPPED;
@@ -181,13 +193,35 @@ void thread_exit()
 
 
 //
-// Get the current thread
+// Get the current thread id
 //
-thread_id_t thread_current(void)
+thread_id_t thread_get_id(void)
 {
-	if (current_thread != NULL)
-		return current_thread->thread_id;
-	return 0;
+	return current_thread->thread_id;
+}
+
+
+
+//
+// Get the current thread name
+//
+const char* thread_name(thread_id_t thread_id)
+{
+	// Test current thread
+	if (thread_id == current_thread->thread_id)
+		return current_thread->thread_name;
+
+	// Test scheduler thread (not in thread array)
+	if (thread_id == scheduler_thread.thread_id)
+		return scheduler_thread.thread_name;
+
+	// Search for thread
+	for (int i = 0; i < THREAD_MAX_COUNT; i++)
+		if (thread_list[i]->thread_id == thread_id)
+			return thread_list[i]->thread_name;
+
+	// No thread found
+	return "Invalid thread id";
 }
 
 
@@ -197,6 +231,11 @@ thread_id_t thread_current(void)
 //
 void thread_sleep_us(uint32_t microseconds)
 {
+	// The scheduler thread cannot yield
+	// It can spinwait, but I'm not sure that's a good idea...
+	if (thread_is_scheduler_thread())
+		return;
+
 	// Mark the thread as waiting
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_TIMED_WAIT;
@@ -239,6 +278,8 @@ void thread_sleep_ms(uint32_t milliseconds)
 //
 void thread_wait_mutex(mutex_t* mutex)
 {
+	ASSERT(!thread_is_scheduler_thread());
+
 	// Mark the thread as waiting for mutex
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_MUTEX_WAIT;
@@ -257,8 +298,8 @@ void thread_wait_mutex(mutex_t* mutex)
 //
 void thread_yield()
 {
-	// Cannot yield when there is no current thread
-	if (current_thread == NULL)
+	// The scheduler thread cannot yield
+	if (thread_is_scheduler_thread())
 		return;
 
 	// Mark the current thread as scheduled
@@ -276,6 +317,8 @@ void thread_yield()
 //
 void thread_suspend()
 {
+	ASSERT(!thread_is_scheduler_thread());
+
 	// Mark the current thread as suspended
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_SUSPENDED;
@@ -300,14 +343,15 @@ void thread_suspend()
 void switch_to_scheduler()
 {
 	ASSERT(current_thread != NULL);
+	ASSERT(current_thread != &scheduler_thread);
 	ASSERT(current_thread->thread_state != THREAD_STATE_RUNNING);
 
-	// Clear current_thread
+	// Set scheduler thread as current_thread
 	thread_t* old_thread = current_thread;
-	current_thread = NULL;
+	current_thread = &scheduler_thread;
 
 	// Switch to the scheduler thread
-	_switch_to_thread(old_thread->registers.regs, scheduler_regs.regs);
+	_switch_to_thread(old_thread->registers.regs, scheduler_thread.registers.regs);
 }
 
 
@@ -317,7 +361,7 @@ void switch_to_scheduler()
 //
 void switch_to_thread(thread_t* thread)
 {
-	ASSERT(current_thread == NULL);
+	ASSERT(current_thread == &scheduler_thread);
 	ASSERT(thread->thread_state != THREAD_STATE_RUNNING);
 
 	// Set current thread
@@ -325,7 +369,7 @@ void switch_to_thread(thread_t* thread)
 	current_thread->thread_state = THREAD_STATE_RUNNING;
 
 	// Switch to the thread
-	_switch_to_thread(scheduler_regs.regs, current_thread->registers.regs);
+	_switch_to_thread(scheduler_thread.registers.regs, current_thread->registers.regs);
 }
 
 
@@ -335,6 +379,9 @@ void switch_to_thread(thread_t* thread)
 //
 void thread_scheduler()
 {
+	// Make sure the scheduler is not called by any thread other than the initial thread
+	ASSERT(thread_is_scheduler_thread());
+	
 	TRACE("Scheduler started");
 
 	// Start at last index so thread[0] will run first
@@ -347,6 +394,9 @@ void thread_scheduler()
 		// Advance to the next slot
 		cur_idx = (cur_idx + 1) & (THREAD_MAX_COUNT - 1);
 		thread_t* next_thread = thread_list[cur_idx];
+
+		// The scheduler thread should never appear in the thread list
+		ASSERT(next_thread != &scheduler_thread);
 
 		// If the current thread matches the last one that ran, all threads have
 		// been checked and found not eligible to run, so wait for interrupts.
@@ -379,18 +429,20 @@ void thread_scheduler()
 
 		// Thread waiting for timespan
 		case THREAD_STATE_TIMED_WAIT:
-			if (!(next_thread->wait_lo <= rpi_sys_timer->clo && next_thread->wait_hi <= rpi_sys_timer->chi))
-				continue;
-			prv_idx = cur_idx;
-			switch_to_thread(next_thread);
+			if (next_thread->wait_lo <= rpi_sys_timer->clo && next_thread->wait_hi <= rpi_sys_timer->chi)
+			{
+				prv_idx = cur_idx;
+				switch_to_thread(next_thread);
+			}
 			continue;
 
 		// Thread waiting for mutex
 		case THREAD_STATE_MUTEX_WAIT:
-			if (!mutex_trylock_thread(next_thread->wait_mutex, next_thread->thread_id))
-				continue;
-			prv_idx = cur_idx;
-			switch_to_thread(next_thread);
+			if (mutex_trylock_thread(next_thread->wait_mutex, next_thread->thread_id))
+			{
+				prv_idx = cur_idx;
+				switch_to_thread(next_thread);
+			}
 			continue;
 
 		// Suspended thread, continue scanning
@@ -407,9 +459,18 @@ void thread_scheduler()
 
 		// Error, should never get here
 		ASSERT(false);
-		printf("A thread state handler is missing!\n");
 		break;
 	}
+}
+
+
+
+//
+// Returns whether this is the scheduler thread
+//
+uint32_t thread_is_scheduler_thread()
+{
+	return current_thread == &scheduler_thread;
 }
 
 
@@ -419,6 +480,8 @@ void thread_scheduler()
 //
 void thread_stub()
 {
+	ASSERT(!thread_is_scheduler_thread());
+
 	// Run the thread function
 	current_thread->thread_fun(current_thread->thread_arg);
 

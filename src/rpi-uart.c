@@ -9,11 +9,21 @@
 #include <stdio.h>
 
 
+//
+// Enable the UART mutex
+//
+#define UART_USE_LOCK
+
+
+
+#ifdef UART_USE_LOCK
 
 //
 // A mutex to protect the UART
 //
 static mutex_t* uart_mutex = 0;
+
+#endif
 
 
 
@@ -64,17 +74,19 @@ void uart_enable()
 	// Disable buffering of stdout since it's redirected to the UART
 	setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
+#ifdef UART_USE_LOCK
 	// Create the mutex
-	uart_mutex = mutex_create();
+	uart_mutex = mutex_create("UART");
+#endif
 
 	TRACE("Enabled PL011 UART");
 }
 
 
 
-/*
-* Stop UART0.
-*/
+//
+// Close the UART
+//
 void uart_term()
 {
 	// Disable UART0.
@@ -192,6 +204,17 @@ void uart_putc_nolock(uint8_t byte)
 
 
 //
+// Write a non-null-terminated string to the UART
+//
+void uart_puts_len_nolock(const char *str, int len)
+{
+	while (len--)
+		uart_putc_nolock(*str++);
+}
+
+
+
+//
 // Write a null-terminated string to the UART
 //
 void uart_puts_nolock(const char *str)
@@ -213,46 +236,15 @@ void uart_puts_nolock(const char *str)
 //
 // Mutex lock/unlock for UART
 //
-// Since the UART must be active before the scheduler runs,
-// it can't blindly use the mutex yet. As soon as the scheduler
-// runs, thread_current() starts returning non-zero values and
-// the mutex goes into effect.
-//
-static inline mutex_t* uart_get_mutex()
-{
-	// The scheduler ignores locks
-	if (thread_current() == 0)
-		return NULL;
-
-	return uart_mutex;
-}
-
-static inline uint32_t uart_mutex_try_lock()
-{
-	mutex_t* mutex = uart_get_mutex();
-	if (mutex == NULL)
-		return 1;
-
-	return mutex_trylock(mutex);
-}
-
-static inline void uart_mutex_lock()
-{
-	mutex_t* mutex = uart_get_mutex();
-	if (mutex == NULL)
-		return;
-
-	mutex_lock(mutex);
-}
-
-static inline void uart_mutex_unlock()
-{
-	mutex_t* mutex = uart_get_mutex();
-	if (mutex == NULL)
-		return;
-
-	mutex_unlock(mutex);
-}
+#ifdef UART_USE_LOCK
+	#define UART_TRY_LOCK() if (!mutex_trylock(uart_mutex)) return 0
+	#define UART_LOCK()		mutex_lock(uart_mutex)
+	#define UART_UNLOCK()	mutex_unlock(uart_mutex)
+#else
+	#define UART_TRY_LOCK()
+	#define UART_LOCK()
+	#define UART_UNLOCK()
+#endif
 
 
 
@@ -261,12 +253,11 @@ static inline void uart_mutex_unlock()
 //
 uint8_t uart_trygetc(uint8_t* byte)
 {
-	if (!uart_mutex_try_lock())
-		return 0;
+	UART_TRY_LOCK();
 
 	uint8_t result = uart_trygetc_nolock(byte);
 
-	uart_mutex_unlock();
+	UART_UNLOCK();
 
 	return result;
 }
@@ -278,13 +269,13 @@ uint8_t uart_trygetc(uint8_t* byte)
 //
 uint8_t uart_getc(void)
 {
-	uart_mutex_lock();
+	UART_LOCK();
 
 	uint8_t ch;
 	while (!uart_trygetc_nolock(&ch))
 		thread_yield();
 
-	uart_mutex_unlock();
+	UART_UNLOCK();
 
 	return ch;
 }
@@ -296,12 +287,11 @@ uint8_t uart_getc(void)
 //
 uint8_t uart_tryputc(uint8_t byte)
 {
-	if (!uart_mutex_try_lock())
-		return 0;
+	UART_TRY_LOCK();
 
 	uint8_t result = uart_tryputc_nolock(byte);
 
-	uart_mutex_unlock();
+	UART_UNLOCK();
 
 	return result;
 }
@@ -313,12 +303,35 @@ uint8_t uart_tryputc(uint8_t byte)
 //
 void uart_putc(uint8_t byte) 
 {
-	uart_mutex_lock();
+	UART_LOCK();
 
 	while (!uart_tryputc_nolock(byte))
 		thread_yield();
 
-	uart_mutex_unlock();
+	UART_UNLOCK();
+}
+
+
+
+//
+// Write a non-null-terminated string to the uart
+//
+void uart_puts_len(const char *str, int len)
+{
+#ifdef UART_USE_LOCK
+	UART_LOCK();
+
+	while (len--)
+	{
+		while (!uart_tryputc_nolock(*str))
+			thread_yield();
+		str++;
+	}
+
+	UART_UNLOCK();
+#else
+	uart_puts_len_nolock(str, len);
+#endif
 }
 
 
@@ -328,12 +341,18 @@ void uart_putc(uint8_t byte)
 //
 void uart_puts(const char *str) 
 {
-	uart_mutex_lock();
+#ifdef UART_USE_LOCK
+	UART_LOCK();
 
-	while (*str++)
+	while (*str)
+	{
 		while (!uart_tryputc_nolock(*str))
 			thread_yield();
-			;
+		str++;
+	}
 
-	uart_mutex_unlock();
+	UART_UNLOCK();
+#else
+	uart_puts_nolock(str);
+#endif
 }

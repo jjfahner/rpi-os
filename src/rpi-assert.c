@@ -1,5 +1,6 @@
 #include "rpi-assert.h"
 #include "rpi-led.h"
+#include "rpi-thread.h"
 
 #include <stdio.h>
 
@@ -21,7 +22,7 @@ void assert_fail_handler(const char* exp, const char* file, int line)
 
 	// Format assertion
 	char buf[1024];
-	sprintf(buf, "%s(%d): Assertion failed: '%s'\n", file, line, exp);
+	sprintf(buf, "%s(%d): (%s) Assertion failed: '%s'\n", file, line, thread_name(thread_get_id()), exp);
 
 	// Write to non-locking uart
 	uart_puts_nolock(buf);

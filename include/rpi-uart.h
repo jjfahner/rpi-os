@@ -23,4 +23,5 @@ EXTERN_C uint8_t uart_getc(void);
 EXTERN_C uint8_t uart_tryputc(uint8_t byte);
 EXTERN_C void uart_putc(uint8_t byte);
 
+EXTERN_C void uart_puts_len(const char *str, int len);
 EXTERN_C void uart_puts(const char *str);

@@ -30,9 +30,8 @@ static uint32_t num_timers = 0;
 
 
 //
-// System timer configuration
+// System timer interval
 //
-static uint32_t sys_timer_compare = 0;
 static uint32_t sys_timer_interval = 0x1000;
 
 

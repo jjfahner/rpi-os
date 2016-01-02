@@ -62,7 +62,6 @@
     <ClInclude Include="..\include\rpi-mutex.h" />
     <ClInclude Include="..\include\rpi-systimer.h" />
     <ClInclude Include="..\include\rpi-thread.h" />
-    <ClInclude Include="..\include\rpi-timer.h" />
     <ClInclude Include="..\include\rpi-trace.h" />
     <ClInclude Include="..\include\rpi-types.h" />
     <ClInclude Include="..\include\rpi-uart.h" />

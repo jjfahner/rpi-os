@@ -188,8 +188,6 @@ void INTERRUPT(ABORT) data_abort_vector(void)
 */
 void INTERRUPT(IRQ) interrupt_vector(void)
 {
-	uint32_t irq_pending;
-
 	while (rpi_irq_controller->irq_basic_pending | rpi_irq_controller->irq_pending_1 | rpi_irq_controller->irq_pending_2)
 	{
 		// Timer interrupt

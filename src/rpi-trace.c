@@ -6,6 +6,13 @@
 
 
 //
+// Use the non-locking version of puts for traces
+//
+void uart_puts_nolock(const char *str);
+
+
+
+//
 // Trace implementation
 //
 void trace(const char* fmt, ...)
@@ -36,5 +43,5 @@ void trace(const char* fmt, ...)
 	va_end(args);
 
 	// Write buffer to the UART
-	printf(trace_buf);
+	uart_puts_nolock(trace_buf);
 }

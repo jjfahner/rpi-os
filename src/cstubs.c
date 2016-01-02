@@ -218,9 +218,6 @@ you must write this in assembler from examples provided by your hardware
 manufacturer) to actually perform the output. */
 int _write(int file, char *ptr, int len)
 {
-	int todo = len;
-	while (todo--)
-		uart_putc(*ptr++);
-	
+	uart_puts_len(ptr, len);
 	return len;
 }
