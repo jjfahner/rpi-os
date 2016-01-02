@@ -75,13 +75,6 @@ EXTERN_C void thread_scheduler();
 
 
 //
-// Returns whether this is the scheduler thread
-//
-EXTERN_C uint32_t thread_is_scheduler_thread();
-
-
-
-//
 // Print the list of threads
 //
 EXTERN_C void thread_print_list();

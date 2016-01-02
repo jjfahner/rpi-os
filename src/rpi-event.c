@@ -141,8 +141,11 @@ void event_wait(event_t* event)
 // Used by thread scheduler: check whether an event is signaled
 // If the event is signaled and auto reset, reset the event here
 //
-uint32_t event_acquire_thread(event_t* event, thread_id_t thread_id)
+uint32_t event_acquire_scheduler(event_t* event, thread_id_t thread_id)
 {
+	// This should only ever be called by the scheduler
+	ASSERT(thread_get_id() == THREAD_SCHEDULER_THREAD_ID);
+
 	// If the thread isn't signaled, fail
 	if (event->count == 0)
 		return 0;

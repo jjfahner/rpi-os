@@ -142,8 +142,8 @@ static void thread_stub();
 //
 // External functions
 //
-uint32_t event_acquire_thread(event_t* event, thread_id_t thread_id);
-uint32_t mutex_acquire_thread(mutex_t* mutex, thread_id_t thread_id);
+uint32_t event_acquire_scheduler(event_t* event, thread_id_t thread_id);
+uint32_t mutex_acquire_scheduler(mutex_t* mutex, thread_id_t thread_id);
 
 
 //
@@ -203,7 +203,7 @@ thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t th
 //
 void thread_exit()
 {
-	ASSERT(!thread_is_scheduler_thread());
+	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
 	// Mark the thread as exiting
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -256,7 +256,7 @@ void thread_sleep_us(uint32_t microseconds)
 {
 	// The scheduler thread cannot yield
 	// It can spinwait, but I'm not sure that's a good idea...
-	if (thread_is_scheduler_thread())
+	if (thread_get_id() == THREAD_SCHEDULER_THREAD_ID)
 		return;
 
 	// Mark the thread as waiting
@@ -301,7 +301,7 @@ void thread_sleep_ms(uint32_t milliseconds)
 //
 void thread_wait_event(event_t* event)
 {
-	ASSERT(!thread_is_scheduler_thread());
+	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
 	// Mark the thread as waiting for event
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -321,7 +321,7 @@ void thread_wait_event(event_t* event)
 //
 void thread_wait_mutex(mutex_t* mutex)
 {
-	ASSERT(!thread_is_scheduler_thread());
+	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
 	// Mark the thread as waiting for mutex
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -342,7 +342,7 @@ void thread_wait_mutex(mutex_t* mutex)
 void thread_yield()
 {
 	// The scheduler thread cannot yield
-	if (thread_is_scheduler_thread())
+	if (thread_get_id() == THREAD_SCHEDULER_THREAD_ID)
 		return;
 
 	// Mark the current thread as scheduled
@@ -360,7 +360,7 @@ void thread_yield()
 //
 void thread_suspend()
 {
-	ASSERT(!thread_is_scheduler_thread());
+	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
 	// Mark the current thread as suspended
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -454,7 +454,7 @@ void thread_print_list()
 void thread_scheduler()
 {
 	// Make sure the scheduler is not called by any thread other than the initial thread
-	ASSERT(thread_is_scheduler_thread());
+	ASSERT(thread_get_id() == THREAD_SCHEDULER_THREAD_ID);
 	
 	TRACE("Scheduler started");
 
@@ -507,13 +507,13 @@ void thread_scheduler()
 
 		// Thread waiting for event
 		case THREAD_STATE_EVENT_WAIT:
-			if (event_acquire_thread(thread->wait_event, thread->thread_id))
+			if (event_acquire_scheduler(thread->wait_event, thread->thread_id))
 				break;
 			continue;
 
 		// Thread waiting for mutex
 		case THREAD_STATE_MUTEX_WAIT:
-			if (mutex_acquire_thread(thread->wait_mutex, thread->thread_id))
+			if (mutex_acquire_scheduler(thread->wait_mutex, thread->thread_id))
 				break;
 			continue;
 
@@ -538,20 +538,7 @@ void thread_scheduler()
 
 		// Switch to the thread that was found
 		switch_to_thread(thread);
-
-		// We've returned from the thread, check that this is the scheduler thread
-		ASSERT(thread_is_scheduler_thread());
 	}
-}
-
-
-
-//
-// Returns whether this is the scheduler thread
-//
-uint32_t thread_is_scheduler_thread()
-{
-	return current_thread == &scheduler_thread;
 }
 
 
@@ -561,7 +548,7 @@ uint32_t thread_is_scheduler_thread()
 //
 void thread_stub()
 {
-	ASSERT(!thread_is_scheduler_thread());
+	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
 	// Run the thread function
 	current_thread->thread_fun(current_thread->thread_arg);

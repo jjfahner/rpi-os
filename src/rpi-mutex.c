@@ -72,9 +72,9 @@ void mutex_destroy(mutex_t* mutex)
 
 
 //
-// Try to acquire a mutex. Implementation, not declared in header. Also used by the thread scheduler.
+// Try to acquire a mutex. Implementation of trylock.
 //
-uint32_t mutex_acquire_thread(mutex_t* mutex, thread_id_t thread_id)
+static uint32_t mutex_trylock_thread(mutex_t* mutex, thread_id_t thread_id)
 {
 	ASSERT(thread_id != THREAD_INVALID_ID);
 	ASSERT(mutex->waits > 0);
@@ -123,7 +123,7 @@ uint32_t mutex_trylock(mutex_t* mutex)
 	mutex->waits++;
 
 	// If the lock succeeds, the wait count will have been removed
-	if (mutex_acquire_thread(mutex, thread_get_id()))
+	if (mutex_trylock_thread(mutex, thread_get_id()))
 		return 1;
 
 	// Remove from wait count
@@ -144,7 +144,7 @@ void mutex_lock(mutex_t* mutex)
 	mutex->waits++;
 
 	// Try to lock the mutex directly
-	if (mutex_acquire_thread(mutex, thread_get_id()))
+	if (mutex_trylock_thread(mutex, thread_get_id()))
 		return;
 
 	// Yield the thread until the mutex is free
@@ -164,4 +164,18 @@ void mutex_unlock(mutex_t* mutex)
 	// Update count
 	if (--mutex->count == 0)
 		mutex->owner = 0;
+}
+
+
+
+//
+// Try to acquire a mutex. Used by the thread scheduler.
+//
+uint32_t mutex_acquire_scheduler(mutex_t* mutex, thread_id_t thread_id)
+{
+	// This should only ever be called by the scheduler
+	ASSERT(thread_get_id() == THREAD_SCHEDULER_THREAD_ID);
+
+	// Try to lock the mutex
+	return mutex_trylock_thread(mutex, thread_id);
 }
