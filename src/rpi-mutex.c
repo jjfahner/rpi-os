@@ -72,6 +72,16 @@ void mutex_destroy(mutex_t* mutex)
 
 
 //
+// Get mutex name
+//
+const char* mutex_get_name(mutex_t* mutex)
+{
+	return mutex->name;
+}
+
+
+
+//
 // Try to acquire a mutex. Implementation of trylock.
 //
 static uint32_t mutex_trylock_thread(mutex_t* mutex, thread_id_t thread_id)
@@ -138,17 +148,17 @@ uint32_t mutex_trylock(mutex_t* mutex)
 //
 // Lock a mutex
 //
-void mutex_lock(mutex_t* mutex)
+uint32_t mutex_lock(mutex_t* mutex, const sys_time_t* timeout)
 {
 	// Add to wait count
 	mutex->waits++;
 
 	// Try to lock the mutex directly
 	if (mutex_trylock_thread(mutex, thread_get_id()))
-		return;
+		return 1;
 
-	// Yield the thread until the mutex is free
-	thread_wait_mutex(mutex);
+	// Yield the thread, return its result
+	return thread_wait_mutex(mutex, timeout);
 }
 
 

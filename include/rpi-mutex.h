@@ -19,6 +19,8 @@
 #pragma once
 
 #include "rpi-base.h"
+#include "rpi-systimer.h"
+
 
 
 //
@@ -50,6 +52,13 @@ EXTERN_C void mutex_destroy(mutex_t* mutex);
 
 
 //
+// Get mutex name
+//
+EXTERN_C const char* mutex_get_name(mutex_t* mutex);
+
+
+
+//
 // Try to lock a mutex
 //
 EXTERN_C uint32_t mutex_trylock(mutex_t* mutex);
@@ -59,7 +68,7 @@ EXTERN_C uint32_t mutex_trylock(mutex_t* mutex);
 //
 // Lock a mutex
 //
-EXTERN_C void mutex_lock(mutex_t* mutex);
+EXTERN_C uint32_t mutex_lock(mutex_t* mutex, const sys_time_t* timeout);
 
 
 

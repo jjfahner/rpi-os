@@ -27,12 +27,11 @@
 //
 // Timer struct
 //
-typedef struct
+typedef struct sys_timer_t
 {
 	uint32_t			interval;
 	uint32_t			count;
-	uint32_t			deadline_lo;
-	uint32_t			deadline_hi;
+	sys_time_t			deadline;
 	sys_timer_proc_t	callback;
 } sys_timer_t;
 
@@ -59,6 +58,71 @@ static uint32_t num_timers = 0;
 // System timer interval
 //
 static uint32_t sys_timer_interval = 0x1000;
+
+
+
+//
+// Retrieve 64-bit system clock
+//
+// Note: since the clock is read in two consecutive cycles, it's not safe to read
+// it without ensuring they are in sync. This function addresses that concern.
+//
+void sys_timer_get_time(sys_time_t* time)
+{
+	do {
+		time->hi = rpi_sys_timer->chi;
+		time->lo = rpi_sys_timer->clo;
+	} while (time->hi != rpi_sys_timer->chi);
+}
+
+
+
+//
+// Add microseconds to a sys_time_t
+//
+void sys_time_add_usecs(sys_time_t* time, uint32_t microseconds)
+{
+	_sys_time_t_add_64(time, microseconds, 0);
+}
+
+
+
+//
+// Add add_time to time
+//
+void sys_time_add_time(sys_time_t* time, const sys_time_t* add_time)
+{
+	_sys_time_t_add_64(time, add_time->lo, add_time->hi);
+}
+
+
+
+//
+// Subtract sub_time from time
+//
+void sys_time_subtract(sys_time_t* time, const sys_time_t* sub_time)
+{
+	_sys_time_t_sub_64(time, sub_time->lo, sub_time->hi);
+}
+
+
+
+//
+// Compare two sys_time_t structs
+//
+int32_t sys_time_compare(const sys_time_t* first, const sys_time_t* second)
+{
+	if (first->hi < second->hi)
+		return -1;
+	else if (first->hi > second->hi)
+		return 1;
+	else if (first->lo < second->lo)
+		return -1;
+	else if (first->lo > second->lo)
+		return 1;
+	else
+		return 0;
+}
 
 
 
@@ -120,20 +184,19 @@ void sys_timer_wait_msec(uint32_t milliseconds)
 static void set_deadline(sys_timer_t* timer)
 {
 	// Copy previous deadline
-	uint32_t cur_lo = timer->deadline_lo;
-	uint32_t cur_hi = timer->deadline_hi;
+	sys_time_t cur = timer->deadline;
 
 	// Calculate interval
-	uint32_t remaining = UINT32_MAX - cur_lo;
+	uint32_t remaining = UINT32_MAX - cur.lo;
 	if (remaining >= timer->interval)
 	{
-		timer->deadline_hi = cur_hi;
-		timer->deadline_lo = cur_lo + timer->interval;
+		timer->deadline.hi = cur.hi;
+		timer->deadline.lo = cur.lo + timer->interval;
 	}
 	else
 	{
-		timer->deadline_lo = timer->interval - remaining;
-		timer->deadline_hi = cur_hi + (timer->interval / UINT32_MAX);
+		timer->deadline.lo = timer->interval - remaining;
+		timer->deadline.hi = cur.hi + (timer->interval / UINT32_MAX);
 	}
 }
 
@@ -164,9 +227,8 @@ uint32_t sys_timer_install(uint32_t interval, uint32_t count, sys_timer_proc_t c
 			timer->interval = interval;
 			timer->count = count;
 			timer->callback = callback;
-			timer->deadline_hi = rpi_sys_timer->chi;
-			timer->deadline_lo = rpi_sys_timer->clo;
 
+			sys_timer_get_time(&timer->deadline);
 			set_deadline(timer);
 
 			num_timers++;
@@ -193,9 +255,8 @@ void invoke_timers()
 		return;
 
 	// Take current time for all timers
-	// Time must be read in this order, the bcm2836 uses a timer-read-hold copy of the high word
-	uint32_t time_lo = rpi_sys_timer->clo;
-	uint32_t time_hi = rpi_sys_timer->chi;
+	sys_time_t time;
+	sys_timer_get_time(&time);
 
 	// Check timers
 	for (int i = 0; i < MAX_TIMERS; i++)
@@ -203,7 +264,7 @@ void invoke_timers()
 		// Check whether the timer is enabled and elapsed
 	if (timers[i].callback != NULL)
 		{
-			if (timers[i].deadline_hi <= time_hi && timers[i].deadline_lo <= time_lo)
+			if (timers[i].deadline.hi <= time.hi && timers[i].deadline.lo <= time.lo)
 			{
 				// Calculate new deadline before processing the timer
 				set_deadline(&timers[i]);
@@ -216,8 +277,8 @@ void invoke_timers()
 				{
 					timers[i].interval = 0;
 					timers[i].count = 0;
-					timers[i].deadline_hi = 0;
-					timers[i].deadline_lo = 0;
+					timers[i].deadline.hi = 0;
+					timers[i].deadline.lo = 0;
 					timers[i].callback = NULL;
 					--num_timers;
 				}

@@ -27,6 +27,7 @@
 
 
 HANDLE hComPort = INVALID_HANDLE_VALUE;
+HANDLE hStdout, hStdin;
 char* pszKernelPath = NULL;
 char* pszKernelFile = NULL;
 
@@ -162,18 +163,40 @@ void WriteOutput()
 
 
 
+void ReadString()
+{
+	uint32_t len = 0;
+	len = (unsigned char)ReadChar();
+	len |= (unsigned char)ReadChar() << 8;
+	len |= (unsigned char)ReadChar() << 16;
+	len |= (unsigned char)ReadChar() << 24;
+	char* buf = (char*)malloc(len + 1);
+	len = ReadBytes(buf, len);
+	*(buf+len) = '\x0';
+	printf(buf);
+	free(buf);
+}
+
+
+
 int main(int argc, char* argv[])
 {
-	printf("Raspbootcom V1.0\n");
+	printf("RPi-OS Console\n");
 
 	// Check command line
-	if (argc != 3) {
-		printf("USAGE: %s <path> <file>\n", argv[0]);
-		printf("Example: %s c:\\path\\to\\kernel kernel.img\n", argv[0]);
-		Exit();
+	if (argc == 3) {
+		pszKernelPath = argv[1];
+		pszKernelFile = argv[2];
 	}
-	pszKernelPath = argv[1];
-	pszKernelFile = argv[2];
+	else 
+	{
+		pszKernelPath = "C:\\Source\\rpi-os"; // TODO!
+		pszKernelFile = "kernel.img";
+	}
+
+	// Attach to console
+	hStdin = GetStdHandle(STD_INPUT_HANDLE);
+	hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
 	// Open com port
 	hComPort = CreateFile("COM3", GENERIC_READ|GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, NULL);
@@ -214,6 +237,15 @@ int main(int argc, char* argv[])
 					printf("%c", n);
 				}	
 				printf("%c", m);
+				break;
+			case '\x04':
+				ReadString();
+				break;
+			case '\x05':
+				{
+					COORD coord = { 0, 0 };
+					SetConsoleCursorPosition(hStdout, coord);
+				}
 				break;
 			default:
 				printf("%c", c);

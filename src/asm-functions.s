@@ -31,6 +31,13 @@
 .global _get_interrupts
 .global _wait_for_interrupt
 .global _switch_to_thread
+.global _isb
+.global _dsb
+.global _uint64_add_32
+.global _uint64_add_64
+.global _sys_time_t_add_32
+.global _sys_time_t_add_64
+.global _sys_time_t_sub_64
 
 
 // Return the stack pointer value
@@ -41,6 +48,38 @@ _get_stack_pointer:
 
 
 
+//
+// Spin for the specified number of cycles
+//
+// extern void _spin(uint32_t cycles);
+//
+_spin: 
+	subs	r0, #1
+	bne		_spin
+    bx		lr
+
+
+
+//
+// Blink the LED
+//
+// extern void _led_blink();
+//
+_led_blink:
+	ldr		r0,=0x20200000
+	mov		r1,#0x8000
+	str		r1,[r0,#32]
+	mov		r1, #0x100000
+_wait_1:
+	subs	r1, #1
+	bne		_wait_1
+	mov		r1,#0x8000
+	str		r1,[r0,#44]
+	mov		r1, #0x100000
+_wait_2:
+	subs	r1, #1
+	bne		_wait_2
+	bx		lr
 //
 // Enable interrupts. Returns old mode.
 //
@@ -90,6 +129,20 @@ _wait_for_interrupt:
 
 
 //
+// Switch from one thread to another
+//
+// Note that the return value must be set through new_regs, it is not set by the code below
+//
+// extern uint32_t _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);
+//
+_switch_to_thread:
+	stmia	r0, {r0-r14}
+	ldmia	r1, {r0-r14}
+	bx	lr
+
+
+
+//
 // Instruction memory barrier
 //
 // extern void _isb();
@@ -112,46 +165,90 @@ _dmb:
 
 
 //
-// Spin for the specified number of cycles
+// Add an unsigned 32-bit word to an unsigned 64-bit word
 //
-// extern void _spin(uint32_t cycles);
+// extern void _uint64_add_32(uint32_t* lo, uint32_t* hi, uint32_t add);
 //
-_spin: 
-	subs	r0, #1
-	bne		_spin
-    bx		lr
-
-
-
-//
-// Blink the LED
-//
-// extern void _led_blink();
-//
-_led_blink:
-	ldr		r0,=0x20200000
-	mov		r1,#0x8000
-	str		r1,[r0,#32]
-	mov		r1, #0x100000
-_wait_1:
-	subs	r1, #1
-	bne		_wait_1
-	mov		r1,#0x8000
-	str		r1,[r0,#44]
-	mov		r1, #0x100000
-_wait_2:
-	subs	r1, #1
-	bne		_wait_2
+_uint64_add_32:
+	push	{r4,r5}
+	ldr		r4, [r0]
+	ldr		r5, [r1]
+	adds	r4, r2
+	adcs	r5, #0
+	str		r4, [r0]
+	str		r5, [r1]
+	pop		{r4,r5}
 	bx		lr
 
 
 
 //
-// Switch from one thread to another
+// Add an unsigned 64-bit word to an unsigned 64-bit word
 //
-// extern void _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);
+// extern void _uint64_add_64(uint32_t* lo, uint32_t* hi, uint32_t add_lo, uint32_t add_hi);
 //
-_switch_to_thread:
-	stmia	r0, {r0-r14}
-	ldmia	r1, {r0-r14}
-	bx	lr
+_uint64_add_64:
+	push	{r4,r5}
+	ldr		r4, [r0]
+	ldr		r5, [r1]
+	adds	r4, r2
+	adcs	r5, r3
+	str		r4, [r0]
+	str		r5, [r1]
+	pop		{r4,r5}
+	bx		lr
+
+
+
+//
+// Add an unsigned 32-bit word to a sys_time_t
+//
+// extern void _sys_time_t_add_32(sys_time_t* time, uint32_t add);
+//
+_sys_time_t_add_32:
+	push	{r3, r4}
+	ldr		r3, [r0]
+	ldr		r4, [r0, #4]
+	adds	r3, r1
+	adcs	r4, #0
+	str		r3, [r0]
+	str		r4, [r0, #4]
+	pop		{r3,r4}
+	bx		lr
+
+
+
+//
+// Add an unsigned 64-bit word to a sys_time_t
+//
+// extern void _sys_time_t_add_64(sys_time_t* time, uint32_t add_lo, uint32_t add_hi);
+//
+_sys_time_t_add_64:
+	push	{r3, r4}
+	ldr		r3, [r0]
+	ldr		r4, [r0, #4]
+	adds	r3, r1
+	adcs	r4, r2
+	str		r3, [r0]
+	str		r4, [r0, #4]
+	pop		{r3,r4}
+	bx		lr
+
+
+
+//
+// Subtract unsigned 64-bit word to a sys_time_t
+//
+// extern void _sys_time_t_sub_64(sys_time_t* time, uint32_t sub_lo, uint32_t sub_hi);
+//
+_sys_time_t_sub_64:
+	push	{r3, r4}
+	ldr		r3, [r0]
+	ldr		r4, [r0, #4]
+	subs	r3, r1
+	subcs	r4, r2
+	str		r3, [r0]
+	str		r4, [r0, #4]
+	pop		{r3,r4}
+	bx		lr
+

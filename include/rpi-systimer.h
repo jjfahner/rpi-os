@@ -21,6 +21,56 @@
 #include "rpi-base.h"
 
 
+
+//
+// System time struct
+//
+typedef struct sys_time_t
+{
+	uint32_t lo;
+	uint32_t hi;
+} sys_time_t;
+
+
+
+//
+// Retrieve 64-bit system clock
+//
+// Note: since the clock is read in two consecutive cycles, it's not safe to read
+// it without ensuring they are in sync. This function addresses that concern.
+//
+EXTERN_C void sys_timer_get_time(sys_time_t* time);
+
+
+
+//
+// Compare two sys_time_t structs
+//
+EXTERN_C int32_t sys_time_compare(const sys_time_t* first, const sys_time_t* second);
+
+
+
+//
+// Add microseconds to a sys_time_t
+//
+EXTERN_C void sys_time_add_usecs(sys_time_t* time, uint32_t microseconds);
+
+
+
+//
+// Add add_time to time
+//
+EXTERN_C void sys_time_add_time(sys_time_t* time, const sys_time_t* add_time);
+
+
+
+//
+// Subtract sub_time from time
+//
+EXTERN_C void sys_time_subtract(sys_time_t* time, const sys_time_t* sub_time);
+
+
+
 //
 // Current system uptime in microseconds, wraps after ~1.1 hours
 //

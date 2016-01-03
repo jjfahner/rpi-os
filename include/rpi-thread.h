@@ -21,6 +21,8 @@
 #include "rpi-base.h"
 #include "rpi-event.h"
 #include "rpi-mutex.h"
+#include "rpi-systimer.h"
+
 
 
 //
@@ -115,28 +117,28 @@ EXTERN_C const char* thread_name(thread_id_t thread_id);
 //
 // Sleep thread
 //
-EXTERN_C void thread_sleep_us(uint32_t microseconds);
+EXTERN_C void thread_sleep_usec(uint32_t microseconds);
 
 
 
 //
 // Sleep thread
 //
-EXTERN_C void thread_sleep_ms(uint32_t milliseconds);
+EXTERN_C void thread_sleep_msec(uint32_t milliseconds);
 
 
 
 //
-// Wait for an event
+// Wait for an event, returns whether the wait succeeded
 //
-EXTERN_C void thread_wait_event(event_t* event);
+EXTERN_C uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout);
 
 
 
 //
-// Wait for a mutex
+// Wait for a mutex, returns whether the wait succeeded
 //
-EXTERN_C void thread_wait_mutex(mutex_t* mutex);
+EXTERN_C uint32_t thread_wait_mutex(mutex_t* mutex, const sys_time_t* timeout);
 
 
 

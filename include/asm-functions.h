@@ -20,6 +20,9 @@
 
 #include "rpi-base.h"
 
+typedef struct sys_time_t sys_time_t;
+
+
 //
 // Enable interrupts
 //
@@ -67,6 +70,41 @@ EXTERN_C void _dmb();
 
 
 //
+// Add an unsigned 32-bit word to an unsigned 64-bit word
+//
+EXTERN_C void _uint64_add_32(uint32_t* lo, uint32_t* hi, uint32_t add);
+
+
+
+//
+// Add an unsigned 64-bit word to an unsigned 64-bit word
+//
+EXTERN_C void _uint64_add_64(uint32_t* lo, uint32_t* hi, uint32_t add_lo, uint32_t add_hi);
+
+
+
+//
+// Add an unsigned 32-bit word to a sys_time_t
+//
+EXTERN_C void _sys_time_t_add_32(sys_time_t* time, uint32_t add);
+
+
+
+//
+// Add an unsigned 64-bit word to a sys_time_t
+//
+EXTERN_C void _sys_time_t_add_64(sys_time_t* time, uint32_t add_lo, uint32_t add_hi);
+
+
+
+//
+// Subtract unsigned 64-bit word to a sys_time_t
+//
+EXTERN_C void _sys_time_t_sub_64(sys_time_t* time, uint32_t sub_lo, uint32_t sub_hi);
+
+
+
+//
 // Spin a number of cycles
 //
 EXTERN_C void _spin(uint32_t cycles);
@@ -90,4 +128,4 @@ EXTERN_C void* _get_stack_pointer(void);
 //
 // Switch from one thread to another
 //
-EXTERN_C void _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);
+EXTERN_C uint32_t _switch_to_thread(uint32_t* cur_regs, uint32_t* new_regs);

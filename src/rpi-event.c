@@ -73,6 +73,16 @@ void event_destroy(event_t* event)
 
 
 //
+// Get event name
+//
+const char* event_get_name(event_t* event)
+{
+	return event->name;
+}
+
+
+
+//
 // Signal an event
 //
 void event_signal(event_t* event)
@@ -116,13 +126,15 @@ uint32_t event_is_signaled(event_t* event)
 //
 // Wait for an event to be signaled
 //
-void event_wait(event_t* event)
+uint32_t event_wait(event_t* event, const sys_time_t* timeout)
 {
 	if (event->count == 0)
 	{
-		// The event is not signaled, yield thread
+		// Add a wait
 		event->waits++;
-		thread_wait_event(event);
+
+		// Yield to scheduler, return its wait result
+		return thread_wait_event(event, timeout);
 	}
 	else
 	{
@@ -132,6 +144,8 @@ void event_wait(event_t* event)
 			ASSERT(event->count != 0);
 			event->count--;
 		}
+
+		return 1;
 	}
 }
 

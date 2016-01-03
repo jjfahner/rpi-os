@@ -18,6 +18,7 @@
 */
 #include "rpi-uart.h"
 #include "rpi-led.h"
+#include "rpi-mutex.h"
 #include "rpi-systimer.h"
 #include "rpi-mailbox-interface.h"
 #include "rpi-thread.h"
@@ -30,15 +31,17 @@
 //////////////////////////////////////////////////////////////////////////
 
 
-
+//
+// A thread that toggles the led on/off every 100 msecs
+//
 void led_thread(uint32_t thread_arg)
 {
 	while (1)
 	{
 		led_on();
-		thread_sleep_ms(100);
+		thread_sleep_msec(100);
 		led_off();
-		thread_sleep_ms(100);
+		thread_sleep_msec(100);
 	}
 }
 
@@ -48,67 +51,9 @@ void led_thread(uint32_t thread_arg)
 
 
 
-static uint32_t thread_counter = 0;
-static void thread_fun(uint32_t);
-
-
-
-void create_thread()
-{
-	char buf[20];
-	sprintf(buf, "Thread %u", thread_counter);
-	thread_create(4 * 1024, buf, thread_fun, thread_counter++);
-}
-
-
-
-static void thread_fun(uint32_t thread_arg)
-{
-	for (int i = 0; i < 25; i++)
-	{
-		printf("Thread %u\n", thread_arg);
-		thread_sleep_ms(/*(thread_arg % 4) **/ 100);
-	}
-
-	create_thread();
-}
-
-
-
-//////////////////////////////////////////////////////////////////////////
-
-
-static event_t* pc_event;
-
-
-static void producer_thread(uint32_t thread_arg)
-{
-	while (1)
-	{
-		printf("Producer\n");
-		event_signal(pc_event);
-		thread_sleep_ms(100);
-	}
-}
-
-
-
-static void consumer_thread(uint32_t thread_arg)
-{
-	while (1)
-	{
-		event_wait(pc_event);
-		printf("Consumer %u\n", thread_arg);
-		thread_sleep_ms(500);
-	}
-}
-
-
-
-//////////////////////////////////////////////////////////////////////////
-
-
-
+//
+// A thread that monitors the uart for input, then echos it back
+//
 static void uart_thread(uint32_t thread_arg)
 {
 	uint8_t ch;
@@ -116,7 +61,7 @@ static void uart_thread(uint32_t thread_arg)
 	while (1)
 	{
 		while (!uart_trygetc(&ch))
-			thread_sleep_ms(1);
+			thread_sleep_msec(1);
 
 		while (!uart_tryputc(ch))
 			thread_yield();
@@ -133,33 +78,91 @@ static void uart_thread(uint32_t thread_arg)
 
 
 
+//
+// A timer thread, prints the thread list every second
+//
 static void time_thread(uint32_t thread_arg)
 {
-	uint32_t n = 0;
-	
 	uint32_t time_us = rpi_sys_timer->clo;
 	while (1)
 	{
-		uint32_t usec = sys_timer_uptime_usec() % 1000000;
-		uint32_t msec = sys_timer_uptime_msec() % 1000;
-
-		uint32_t tsec = sys_timer_uptime_sec();
-		uint32_t sec = tsec % 60;
-		tsec /= 60;
-		uint32_t min = tsec % 60;
-		tsec /= 60;
-		uint32_t hrs = tsec % 24;
-		tsec /= 24;
-		uint32_t day = tsec;
-
-		TRACE("Timestamp %5d, d=%02u, h=%02u, m=%02u, s=%02u, m=%03u, u=%03u, clo=%u", n++, 
-			day, hrs, min, sec, msec, usec, rpi_sys_timer->clo);
-
-		thread_sleep_us(1000000 - (rpi_sys_timer->clo - time_us));
+		thread_print_list();
+		thread_sleep_usec(1000000 - (rpi_sys_timer->clo - time_us));
 		time_us += 1000000;
 	}
 }
 
+
+
+//////////////////////////////////////////////////////////////////////////
+
+
+
+static uint32_t thread_counter = 0;
+static void thread_fun(uint32_t);
+
+static mutex_t* test_mutex;
+
+void create_worker()
+{
+	char buf[20];
+	sprintf(buf, "Worker %u", thread_counter);
+	thread_create(4 * 1024, buf, thread_fun, thread_counter++);
+}
+
+
+
+static void thread_fun(uint32_t thread_arg)
+{
+	sys_time_t timeout = { 10000000, 0 };
+	uint32_t locked = mutex_lock(test_mutex, &timeout);
+
+	int result = 0;
+	
+	for (int l = 0; l < 2500; l++)
+	{
+		for (int i = 0; i < 25000; i++)
+			result += i;
+		thread_sleep_usec(750);
+	}
+
+	if (locked)
+		mutex_unlock(test_mutex);
+
+	create_worker();
+}
+
+
+
+//////////////////////////////////////////////////////////////////////////
+
+
+
+static event_t* test_event;
+
+
+static void producer_thread(uint32_t thread_arg)
+{
+	while (1)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			event_signal(test_event);
+			thread_sleep_msec(i * 500);
+		}
+	}
+}
+
+
+
+static void consumer_thread(uint32_t thread_arg)
+{
+	while (1)
+	{
+		event_wait(test_event, NULL);
+		thread_sleep_msec(5000);
+	}
+}
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -171,6 +174,8 @@ static void time_thread(uint32_t thread_arg)
 //
 extern "C" void rpi_main(uint32_t thread_arg)
 {
+	test_mutex = mutex_create("test_mutex");
+
 	// Create a led blink timer
 	thread_create(4 * 1024, "LED thread", &led_thread, 0);
 	
@@ -180,20 +185,26 @@ extern "C" void rpi_main(uint32_t thread_arg)
 	// Create a time trace thread
 	thread_create(4 * 1024, "Time thread", &time_thread, 0);
 
-	// Create some worker threads
-// 	for (int i = 0; i < 5; i++)
-// 		create_thread();
+	// Create an event, a producer and some consumer threads
+	test_event = event_create("test_event", EVENT_TYPE_AUTO);
+	thread_create(4 * 1024, "Producer", &producer_thread, 0);
+	for (int i = 0; i < 5; i++)
+	{
+		thread_create(4 * 1024, "Consumer", &consumer_thread, i);
+		thread_sleep_usec(5000);
+	}
 
-	// Create an event, a producer and some consumers
-// 	pc_event = event_create("Some event name", EVENT_TYPE_AUTO);
-// 	thread_create(4 * 1024, "Producer", &producer_thread, 0);
-// 	for (int i = 0; i < 5; i++)
-// 		thread_create(4 * 1024, "Consumer", &consumer_thread, i);
+	// Create some worker threads
+	for (int i = 0; i < 5; i++)
+	{
+		create_worker();
+		thread_sleep_usec(5000);
+	}
+
+	// Suspend the main thread
+	thread_suspend();
 
 	// Main loop
 	while (1)
-	{
-//		thread_print_list();
-		thread_sleep_ms(1000);
-	}
+		;
 }

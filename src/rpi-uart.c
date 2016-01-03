@@ -25,6 +25,8 @@
 #include "asm-functions.h"
 
 #include <stdio.h>
+#include <string.h>
+
 
 
 //
@@ -256,7 +258,7 @@ void uart_puts_nolock(const char *str)
 //
 #ifdef UART_USE_LOCK
 	#define UART_TRY_LOCK() if (!mutex_trylock(uart_mutex)) return 0
-	#define UART_LOCK()		mutex_lock(uart_mutex)
+	#define UART_LOCK()		mutex_lock(uart_mutex, NULL)
 	#define UART_UNLOCK()	mutex_unlock(uart_mutex)
 #else
 	#define UART_TRY_LOCK()
@@ -339,6 +341,12 @@ void uart_puts_len(const char *str, int len)
 #ifdef UART_USE_LOCK
 	UART_LOCK();
 
+	uart_putc('\x04');
+	uart_putc((uint8_t)(len >>  0) & 0xFF);
+	uart_putc((uint8_t)(len >>  8) & 0xFF);
+	uart_putc((uint8_t)(len >> 16) & 0xFF);
+	uart_putc((uint8_t)(len >> 24) & 0xFF);
+
 	while (len--)
 	{
 		while (!uart_tryputc_nolock(*str))
@@ -359,18 +367,5 @@ void uart_puts_len(const char *str, int len)
 //
 void uart_puts(const char *str) 
 {
-#ifdef UART_USE_LOCK
-	UART_LOCK();
-
-	while (*str)
-	{
-		while (!uart_tryputc_nolock(*str))
-			thread_yield();
-		str++;
-	}
-
-	UART_UNLOCK();
-#else
-	uart_puts_nolock(str);
-#endif
+	uart_puts_len(str, strlen(str));
 }

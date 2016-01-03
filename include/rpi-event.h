@@ -19,6 +19,7 @@
 #pragma once
 
 #include "rpi-base.h"
+#include "rpi-systimer.h"
 
 
 
@@ -62,6 +63,13 @@ EXTERN_C void event_destroy(event_t* event);
 
 
 //
+// Get event name
+//
+EXTERN_C const char* event_get_name(event_t* event);
+
+
+
+//
 // Signal an event
 //
 EXTERN_C void event_signal(event_t* event);
@@ -83,6 +91,7 @@ EXTERN_C uint32_t event_is_signaled(event_t* event);
 
 
 //
-// Wait for an event to be signaled
+// Wait for an event to be signaled with optional timeout
 //
-EXTERN_C void event_wait(event_t* event);
+//
+EXTERN_C uint32_t event_wait(event_t* event, const sys_time_t* timeout);

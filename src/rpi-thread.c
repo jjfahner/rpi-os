@@ -17,6 +17,8 @@
 	under the License.
 */
 #include "rpi-thread.h"
+#include "rpi-systimer.h"
+#include "rpi-uart.h"
 #include "asm-functions.h"
 
 #include <stdlib.h>
@@ -88,9 +90,8 @@ typedef struct
 	// Registers
 	registers_t		registers;
 
-	// Wait timer
-	uint32_t		wait_lo;
-	uint32_t		wait_hi;
+	// Scheduled time
+	sys_time_t		sched_time;
 
 	// Wait objects
 	union {
@@ -98,6 +99,11 @@ typedef struct
 		event_t*	wait_event;
 		mutex_t*	wait_mutex;
 	};
+
+	// Performance data
+	uint32_t		run_count;
+	uint32_t		run_cycles;
+	
 } thread_t;
 
 
@@ -133,7 +139,7 @@ static thread_t* current_thread = &scheduler_thread;
 //
 // Local functions
 //
-static void switch_to_scheduler();
+static uint32_t switch_to_scheduler();
 static void switch_to_thread(thread_t* thread);
 static void thread_stub();
 
@@ -181,6 +187,13 @@ thread_id_t thread_create(uint32_t stack_size, char const* name, thread_fun_t th
 	int insert_pos = 0;
 	for (; insert_pos < THREAD_MAX_COUNT; insert_pos++)
 	{
+		if (thread_list[insert_pos] != NULL && thread_list[insert_pos]->thread_state == THREAD_STATE_STOPPED)
+		{
+			free(thread_list[insert_pos]->stack_base);
+			free(thread_list[insert_pos]);
+			thread_list[insert_pos] = NULL;
+		}
+
 		if (thread_list[insert_pos] == NULL)
 		{
 			thread_list[insert_pos] = thread;
@@ -252,7 +265,7 @@ const char* thread_name(thread_id_t thread_id)
 //
 // Sleep thread
 //
-void thread_sleep_us(uint32_t microseconds)
+void thread_sleep_usec(uint32_t microseconds)
 {
 	// The scheduler thread cannot yield
 	// It can spinwait, but I'm not sure that's a good idea...
@@ -263,22 +276,9 @@ void thread_sleep_us(uint32_t microseconds)
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_TIMED_WAIT;
 
-	// Read system timer
-	uint32_t time_lo = rpi_sys_timer->clo;
-	uint32_t time_hi = rpi_sys_timer->chi;
-
-	// Calculate time to wake up again
-	uint32_t lo_remaining = UINT32_MAX - time_lo;
-	if (microseconds < lo_remaining)
-	{
-		current_thread->wait_lo = time_lo + microseconds;
-		current_thread->wait_hi = time_hi;
-	}
-	else
-	{
-		current_thread->wait_lo = microseconds - lo_remaining;
-		current_thread->wait_hi = time_hi + 1;
-	}
+	// Calculate scheduled time
+	sys_timer_get_time(&current_thread->sched_time);
+	sys_time_add_usecs(&current_thread->sched_time, microseconds);
 
 	// Yield to the scheduler thread
 	switch_to_scheduler();
@@ -289,9 +289,9 @@ void thread_sleep_us(uint32_t microseconds)
 //
 // Sleep thread
 //
-void thread_sleep_ms(uint32_t milliseconds)
+void thread_sleep_msec(uint32_t milliseconds)
 {
-	thread_sleep_us(milliseconds * 1000);
+	thread_sleep_usec(milliseconds * 1000);
 }
 
 
@@ -299,7 +299,7 @@ void thread_sleep_ms(uint32_t milliseconds)
 //
 // Wait for an event
 //
-void thread_wait_event(event_t* event)
+uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout)
 {
 	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
@@ -310,8 +310,20 @@ void thread_wait_event(event_t* event)
 	// Store the mutex with the thread
 	current_thread->wait_event = event;
 
+	// Set the timeout
+	if (timeout == NULL)
+	{
+		current_thread->sched_time.lo = UINT32_MAX;
+		current_thread->sched_time.hi = UINT32_MAX;
+	}
+	else
+	{
+		sys_timer_get_time(&current_thread->sched_time);
+		sys_time_add_time(&current_thread->sched_time, timeout);
+	}
+
 	// Yield to the scheduler thread
-	switch_to_scheduler();
+	return switch_to_scheduler();
 }
 
 
@@ -319,7 +331,7 @@ void thread_wait_event(event_t* event)
 //
 // Thread wait for mutex
 //
-void thread_wait_mutex(mutex_t* mutex)
+uint32_t thread_wait_mutex(mutex_t* mutex, const sys_time_t* timeout)
 {
 	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
 
@@ -330,8 +342,20 @@ void thread_wait_mutex(mutex_t* mutex)
 	// Store the mutex with the thread
 	current_thread->wait_mutex = mutex;
 
+	// Set the timeout
+	if (timeout == NULL)
+	{
+		current_thread->sched_time.lo = UINT32_MAX;
+		current_thread->sched_time.hi = UINT32_MAX;
+	}
+	else
+	{
+		sys_timer_get_time(&current_thread->sched_time);
+		sys_time_add_time(&current_thread->sched_time, timeout);
+	}
+
 	// Yield to the scheduler thread
-	switch_to_scheduler();
+	return switch_to_scheduler();
 }
 
 
@@ -383,7 +407,7 @@ void thread_suspend()
 //
 // Switch to the thread scheduler
 //
-void switch_to_scheduler()
+uint32_t switch_to_scheduler()
 {
 	ASSERT(current_thread != NULL);
 	ASSERT(current_thread != &scheduler_thread);
@@ -394,7 +418,7 @@ void switch_to_scheduler()
 	current_thread = &scheduler_thread;
 
 	// Switch to the scheduler thread
-	_switch_to_thread(old_thread->registers.regs, scheduler_thread.registers.regs);
+	return _switch_to_thread(old_thread->registers.regs, scheduler_thread.registers.regs);
 }
 
 
@@ -422,28 +446,83 @@ void switch_to_thread(thread_t* thread)
 //
 void thread_print_list()
 {
+	static char* buf = NULL;
+	if (buf == NULL)
+		buf = (char*)malloc(0x1000);
+
+	sys_time_t time;
+	sys_timer_get_time(&time);
+
+	uint32_t usec = sys_timer_uptime_usec() % 1000000;
+	uint32_t msec = sys_timer_uptime_msec() % 1000;
+
+	uint32_t tsec = sys_timer_uptime_sec();
+	uint32_t sec = tsec % 60;
+	tsec /= 60;
+	uint32_t min = tsec % 60;
+	tsec /= 60;
+	uint32_t hrs = tsec % 24;
+	tsec /= 24;
+	uint32_t day = tsec;
+
+	// Write time and header
+	char* buf_ptr = buf;
+	buf_ptr += sprintf(buf_ptr, "%02u:%02u:%02u:%02u:%03u usec=%03u\n\n", day, hrs, min, sec, msec, usec);
+	buf_ptr += sprintf(buf_ptr, "  Slot        ID    Name              Runcount        Cycles    State              Time    WaitObject\n");
+
+	// Write threads
 	for (int i = 0; i < THREAD_MAX_COUNT; i++)
 	{
+		// Get thread, skip empty slots
 		thread_t* thread = thread_list[i];
 		if (thread == NULL)
 			continue;
 
-		const char* thread_state;
+		// Calculate time remaining
+		sys_time_t sched_time = thread->sched_time;
+		sys_time_subtract(&sched_time, &time);
+
+		// Build state-specific info string
+		char state_string[100];
 		switch (thread->thread_state)
 		{
-		case THREAD_STATE_STARTING:		thread_state = "Starting";	break;
-		case THREAD_STATE_SCHEDULED:	thread_state = "Scheduled"; break;
-		case THREAD_STATE_RUNNING:		thread_state = "Running";	break;
-		case THREAD_STATE_TIMED_WAIT:	thread_state = "TimedWait"; break;
-		case THREAD_STATE_EVENT_WAIT:	thread_state = "EventWait"; break;
-		case THREAD_STATE_MUTEX_WAIT:	thread_state = "MutexWait"; break;
-		case THREAD_STATE_SUSPENDED:	thread_state = "Suspended"; break;
-		case THREAD_STATE_STOPPED:		thread_state = "Stopped";	break;
-		default:						thread_state = "Unknown";	break;
+		case THREAD_STATE_STARTING:		sprintf(state_string, "Starting ");	break;
+		case THREAD_STATE_SCHEDULED:	sprintf(state_string, "Scheduled"); break;
+		case THREAD_STATE_RUNNING:		sprintf(state_string, "Running  ");	break;
+		case THREAD_STATE_TIMED_WAIT:	sprintf(state_string, "TimedWait    %10u", sched_time.lo); break;
+		case THREAD_STATE_EVENT_WAIT:	sprintf(state_string, "EventWait    %10u    %s", sched_time.lo, event_get_name(thread->wait_event)); break;
+		case THREAD_STATE_MUTEX_WAIT:	sprintf(state_string, "MutexWait    %10u    %s", sched_time.lo, mutex_get_name(thread->wait_mutex)); break;
+		case THREAD_STATE_SUSPENDED:	sprintf(state_string, "Suspended "); break;
+		case THREAD_STATE_STOPPED:		sprintf(state_string, "Stopped   "); break;
+		default:						sprintf(state_string, "Unknown   "); break;
 		}
 
-		printf("%3d(%10s): id %8x, state %10s\n", i, thread->thread_name, thread->thread_id, thread_state);
+		// Write thread info string to buffer
+		buf_ptr += sprintf(buf_ptr, "%6u    %6u    %-12.12s    %10u    %10u    %s", 
+			i, thread->thread_id, thread->thread_name, thread->run_count, thread->run_cycles, state_string);
+		
+		// Pad buffer
+		while ((buf_ptr - buf) % 120 != 0)
+			*buf_ptr++ = ' ';
+
+		// Add line feed and terminate
+		*buf_ptr++ = '\n';
+		*buf_ptr = 0;
 	}
+
+	// Add a few lines for good measure
+	for (int i = 0; i < 5; i++)
+	{
+		for (int j = 0; j < 120; j++)
+			*buf_ptr++ = ' ';
+		*buf_ptr++ = '\n';
+	}
+	*buf_ptr = 0;
+
+
+	// Reposition cursor and write buffer
+	uart_putc('\x05');
+	uart_puts(buf);
 }
 
 
@@ -483,6 +562,10 @@ void thread_scheduler()
 		if (cur_idx == prv_idx)
 			_wait_for_interrupt();
 
+		// Get the current time
+		sys_time_t time;
+		sys_timer_get_time(&time);
+
 		// Handle thread states. Note that all states should be handled here!
 		switch (thread->thread_state)
 		{
@@ -501,25 +584,46 @@ void thread_scheduler()
 
 		// Thread waiting for timespan
 		case THREAD_STATE_TIMED_WAIT:
-			if (thread->wait_lo <= rpi_sys_timer->clo && thread->wait_hi <= rpi_sys_timer->chi)
+			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			{
+				thread->registers.r0 = 1;
 				break;
+			}
 			continue;
 
 		// Thread waiting for event
 		case THREAD_STATE_EVENT_WAIT:
 			if (event_acquire_scheduler(thread->wait_event, thread->thread_id))
+			{
+				thread->registers.r0 = 1;
 				break;
+			}
+			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			{
+				thread->registers.r0 = 0;
+				break;
+			}
 			continue;
 
 		// Thread waiting for mutex
 		case THREAD_STATE_MUTEX_WAIT:
 			if (mutex_acquire_scheduler(thread->wait_mutex, thread->thread_id))
+			{
+				thread->registers.r0 = 1;
 				break;
+			}
+			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			{
+				thread->registers.r0 = 0;
+				break;
+			}
 			continue;
+
 
 		// Suspended thread, continue scanning
 		case THREAD_STATE_SUSPENDED:
 			continue;
+
 
 		// Stopped thread, clear thread data and continue
 		case THREAD_STATE_STOPPED:
@@ -536,8 +640,15 @@ void thread_scheduler()
 		// Clear the wait object that the thread was waiting for
 		thread->wait_object = 0;
 
+		// Take start time
+		uint32_t start_time = sys_timer_uptime_usec();
+
 		// Switch to the thread that was found
 		switch_to_thread(thread);
+
+		// Update performance data
+		thread->run_count++;
+		thread->run_cycles += (sys_timer_uptime_usec() - start_time) * 600;
 	}
 }
 
