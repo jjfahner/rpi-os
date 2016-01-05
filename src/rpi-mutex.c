@@ -84,7 +84,7 @@ const char* mutex_get_name(mutex_t* mutex)
 //
 // Try to acquire a mutex. Implementation of trylock.
 //
-static uint32_t mutex_trylock_thread(mutex_t* mutex, thread_id_t thread_id)
+static uint32_t mutex_trylock(mutex_t* mutex, thread_id_t thread_id)
 {
 	ASSERT(thread_id != THREAD_INVALID_ID);
 	ASSERT(mutex->waits > 0);
@@ -125,27 +125,6 @@ static uint32_t mutex_trylock_thread(mutex_t* mutex, thread_id_t thread_id)
 
 
 //
-// Try to lock a mutex
-//
-uint32_t mutex_trylock(mutex_t* mutex)
-{
-	// Add to wait count
-	mutex->waits++;
-
-	// If the lock succeeds, the wait count will have been removed
-	if (mutex_trylock_thread(mutex, thread_get_id()))
-		return 1;
-
-	// Remove from wait count
-	mutex->waits--;
-
-	// Try lock failed
-	return 0;
-}
-
-
-
-//
 // Lock a mutex
 //
 uint32_t mutex_lock(mutex_t* mutex, sys_time_t timeout)
@@ -154,7 +133,7 @@ uint32_t mutex_lock(mutex_t* mutex, sys_time_t timeout)
 	mutex->waits++;
 
 	// Try to lock the mutex directly
-	if (mutex_trylock_thread(mutex, thread_get_id()))
+	if (mutex_trylock(mutex, thread_get_id()))
 		return 1;
 
 	// If the timeout is zero, return immediately
@@ -191,5 +170,5 @@ uint32_t mutex_acquire_scheduler(mutex_t* mutex, thread_id_t thread_id)
 	ASSERT(thread_get_id() == THREAD_SCHEDULER_THREAD_ID);
 
 	// Try to lock the mutex
-	return mutex_trylock_thread(mutex, thread_id);
+	return mutex_trylock(mutex, thread_id);
 }

@@ -59,13 +59,6 @@ EXTERN_C const char* mutex_get_name(mutex_t* mutex);
 
 
 //
-// Try to lock a mutex
-//
-EXTERN_C uint32_t mutex_trylock(mutex_t* mutex);
-
-
-
-//
 // Lock a mutex
 //
 EXTERN_C uint32_t mutex_lock(mutex_t* mutex, sys_time_t timeout);

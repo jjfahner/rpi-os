@@ -142,9 +142,9 @@ uint32_t event_wait(event_t* event, sys_time_t timeout)
 	}
 	else
 	{
+		// Decrement event counter for auto event
 		if (event->type == EVENT_TYPE_AUTO)
 		{
-			// Decrement the counter
 			ASSERT(event->count != 0);
 			event->count--;
 		}
