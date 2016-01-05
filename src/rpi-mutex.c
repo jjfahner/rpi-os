@@ -148,7 +148,7 @@ uint32_t mutex_trylock(mutex_t* mutex)
 //
 // Lock a mutex
 //
-uint32_t mutex_lock(mutex_t* mutex, const sys_time_t* timeout)
+uint32_t mutex_lock(mutex_t* mutex, sys_time_t timeout)
 {
 	// Add to wait count
 	mutex->waits++;
@@ -156,6 +156,10 @@ uint32_t mutex_lock(mutex_t* mutex, const sys_time_t* timeout)
 	// Try to lock the mutex directly
 	if (mutex_trylock_thread(mutex, thread_get_id()))
 		return 1;
+
+	// If the timeout is zero, return immediately
+	if (timeout == 0)
+		return 0;
 
 	// Yield the thread, return its result
 	return thread_wait_mutex(mutex, timeout);

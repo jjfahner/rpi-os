@@ -131,14 +131,14 @@ EXTERN_C void thread_sleep_msec(uint32_t milliseconds);
 //
 // Wait for an event, returns whether the wait succeeded
 //
-EXTERN_C uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout);
+EXTERN_C uint32_t thread_wait_event(event_t* event, sys_time_t timeout);
 
 
 
 //
 // Wait for a mutex, returns whether the wait succeeded
 //
-EXTERN_C uint32_t thread_wait_mutex(mutex_t* mutex, const sys_time_t* timeout);
+EXTERN_C uint32_t thread_wait_mutex(mutex_t* mutex, sys_time_t timeout);
 
 
 

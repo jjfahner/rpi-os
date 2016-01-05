@@ -126,10 +126,14 @@ uint32_t event_is_signaled(event_t* event)
 //
 // Wait for an event to be signaled
 //
-uint32_t event_wait(event_t* event, const sys_time_t* timeout)
+uint32_t event_wait(event_t* event, sys_time_t timeout)
 {
 	if (event->count == 0)
 	{
+		// No timeout and no count, fail immediately
+		if (timeout == 0)
+			return 0;
+
 		// Add a wait
 		event->waits++;
 

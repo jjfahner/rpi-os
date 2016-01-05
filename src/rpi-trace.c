@@ -37,7 +37,7 @@ void uart_puts_nolock(const char *str);
 void trace(const char* fmt, ...)
 {
 	// Get system time
-	uint32_t uptime_ms = sys_timer_uptime_msec();
+	sys_time_t uptime_ms = sys_timer_get_time() / 1000;
 
 	// Calculate time parts
 	uint32_t time_ms = uptime_ms % 1000;

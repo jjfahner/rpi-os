@@ -137,6 +137,14 @@ static thread_t* current_thread = &scheduler_thread;
 
 
 //
+// Tick counts
+//
+static sys_time_t perf_idle_ticks;
+static sys_time_t perf_exec_ticks;
+
+
+
+//
 // Local functions
 //
 static uint32_t switch_to_scheduler();
@@ -276,9 +284,8 @@ void thread_sleep_usec(uint32_t microseconds)
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
 	current_thread->thread_state = THREAD_STATE_TIMED_WAIT;
 
-	// Calculate scheduled time
-	sys_timer_get_time(&current_thread->sched_time);
-	sys_time_add_usecs(&current_thread->sched_time, microseconds);
+	// Set scheduled time
+	current_thread->sched_time = sys_timer_get_time() + microseconds;
 
 	// Yield to the scheduler thread
 	switch_to_scheduler();
@@ -299,9 +306,13 @@ void thread_sleep_msec(uint32_t milliseconds)
 //
 // Wait for an event
 //
-uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout)
+uint32_t thread_wait_event(event_t* event, sys_time_t timeout)
 {
 	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
+
+	// Early out when the timeout is zero
+	if (timeout == 0)
+		return 0;
 
 	// Mark the thread as waiting for event
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -311,16 +322,10 @@ uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout)
 	current_thread->wait_event = event;
 
 	// Set the timeout
-	if (timeout == NULL)
-	{
-		current_thread->sched_time.lo = UINT32_MAX;
-		current_thread->sched_time.hi = UINT32_MAX;
-	}
+	if (timeout == TIMEOUT_INFINITE)
+		current_thread->sched_time = TIMEOUT_INFINITE;
 	else
-	{
-		sys_timer_get_time(&current_thread->sched_time);
-		sys_time_add_time(&current_thread->sched_time, timeout);
-	}
+		current_thread->sched_time = sys_timer_get_time() + timeout;
 
 	// Yield to the scheduler thread
 	return switch_to_scheduler();
@@ -331,9 +336,13 @@ uint32_t thread_wait_event(event_t* event, const sys_time_t* timeout)
 //
 // Thread wait for mutex
 //
-uint32_t thread_wait_mutex(mutex_t* mutex, const sys_time_t* timeout)
+uint32_t thread_wait_mutex(mutex_t* mutex, sys_time_t timeout)
 {
 	ASSERT(thread_get_id() != THREAD_SCHEDULER_THREAD_ID);
+
+	// Early out when the timeout is zero
+	if (timeout == 0)
+		return 0;
 
 	// Mark the thread as waiting for mutex
 	ASSERT(current_thread->thread_state == THREAD_STATE_RUNNING);
@@ -343,16 +352,10 @@ uint32_t thread_wait_mutex(mutex_t* mutex, const sys_time_t* timeout)
 	current_thread->wait_mutex = mutex;
 
 	// Set the timeout
-	if (timeout == NULL)
-	{
-		current_thread->sched_time.lo = UINT32_MAX;
-		current_thread->sched_time.hi = UINT32_MAX;
-	}
+	if (timeout == TIMEOUT_INFINITE)
+		current_thread->sched_time = TIMEOUT_INFINITE;
 	else
-	{
-		sys_timer_get_time(&current_thread->sched_time);
-		sys_time_add_time(&current_thread->sched_time, timeout);
-	}
+		current_thread->sched_time = sys_timer_get_time() + timeout;
 
 	// Yield to the scheduler thread
 	return switch_to_scheduler();
@@ -448,15 +451,12 @@ void thread_print_list()
 {
 	static char* buf = NULL;
 	if (buf == NULL)
-		buf = (char*)malloc(0x1000);
+		buf = (char*)malloc(0x8000);
 
-	sys_time_t time;
-	sys_timer_get_time(&time);
-
-	uint32_t usec = sys_timer_uptime_usec() % 1000000;
-	uint32_t msec = sys_timer_uptime_msec() % 1000;
-
-	uint32_t tsec = sys_timer_uptime_sec();
+	sys_time_t time = sys_timer_get_time(&time);
+	uint32_t tsec = time / 1000;
+	uint32_t msec = tsec % 1000;
+	tsec /= 1000;
 	uint32_t sec = tsec % 60;
 	tsec /= 60;
 	uint32_t min = tsec % 60;
@@ -465,10 +465,24 @@ void thread_print_list()
 	tsec /= 24;
 	uint32_t day = tsec;
 
-	// Write time and header
+	// Calculate performance
+	static sys_time_t prev_exec_ticks = 0;
+	static sys_time_t prev_idle_ticks = 0;
+	sys_time_t cur_exec_ticks = perf_exec_ticks - prev_exec_ticks;
+	sys_time_t cur_idle_ticks = perf_idle_ticks - prev_idle_ticks;
+	prev_exec_ticks = perf_exec_ticks;
+	prev_idle_ticks = perf_idle_ticks;	
+	float busy = (float)cur_exec_ticks / (float)cur_idle_ticks * 100.0f;
+
+	// Start at buffer start
 	char* buf_ptr = buf;
-	buf_ptr += sprintf(buf_ptr, "%02u:%02u:%02u:%02u:%03u usec=%03u\n\n", day, hrs, min, sec, msec, usec);
-	buf_ptr += sprintf(buf_ptr, "  Slot        ID    Name              Runcount        Cycles    State              Time    WaitObject\n");
+
+	// Write time and performance
+	buf_ptr += sprintf(buf_ptr, "%02u:%02u:%02u:%02u:%03u   Busy: %.2f                         \n", 
+		day, hrs, min, sec, msec, busy);
+
+	// Write header
+	buf_ptr += sprintf(buf_ptr, "  Slot        ID    Name              Runcount        Time      State              Time    WaitObject\n");
 
 	// Write threads
 	for (int i = 0; i < THREAD_MAX_COUNT; i++)
@@ -478,20 +492,33 @@ void thread_print_list()
 		if (thread == NULL)
 			continue;
 
+		// Copy thread state
+		uint32_t thread_state = thread->thread_state;
+
 		// Calculate time remaining
 		sys_time_t sched_time = thread->sched_time;
-		sys_time_subtract(&sched_time, &time);
+		if (sched_time <= time)
+		{
+			// No more time remaining, mark scheduled
+			sched_time = 0;
+			thread_state = THREAD_STATE_SCHEDULED;
+		}
+		else
+		{
+			// Still waiting, subtract current time
+			sched_time = sched_time - time;
+		}
 
 		// Build state-specific info string
 		char state_string[100];
-		switch (thread->thread_state)
+		switch (thread_state)
 		{
 		case THREAD_STATE_STARTING:		sprintf(state_string, "Starting ");	break;
 		case THREAD_STATE_SCHEDULED:	sprintf(state_string, "Scheduled"); break;
 		case THREAD_STATE_RUNNING:		sprintf(state_string, "Running  ");	break;
-		case THREAD_STATE_TIMED_WAIT:	sprintf(state_string, "TimedWait    %10u", sched_time.lo); break;
-		case THREAD_STATE_EVENT_WAIT:	sprintf(state_string, "EventWait    %10u    %s", sched_time.lo, event_get_name(thread->wait_event)); break;
-		case THREAD_STATE_MUTEX_WAIT:	sprintf(state_string, "MutexWait    %10u    %s", sched_time.lo, mutex_get_name(thread->wait_mutex)); break;
+		case THREAD_STATE_TIMED_WAIT:	sprintf(state_string, "TimedWait    %10u", (uint32_t)sched_time); break;
+		case THREAD_STATE_EVENT_WAIT:	sprintf(state_string, "EventWait    %10u    %s", (uint32_t)sched_time, event_get_name(thread->wait_event)); break;
+		case THREAD_STATE_MUTEX_WAIT:	sprintf(state_string, "MutexWait    %10u    %s", (uint32_t)sched_time, mutex_get_name(thread->wait_mutex)); break;
 		case THREAD_STATE_SUSPENDED:	sprintf(state_string, "Suspended "); break;
 		case THREAD_STATE_STOPPED:		sprintf(state_string, "Stopped   "); break;
 		default:						sprintf(state_string, "Unknown   "); break;
@@ -499,7 +526,7 @@ void thread_print_list()
 
 		// Write thread info string to buffer
 		buf_ptr += sprintf(buf_ptr, "%6u    %6u    %-12.12s    %10u    %10u    %s", 
-			i, thread->thread_id, thread->thread_name, thread->run_count, thread->run_cycles, state_string);
+			i, thread->thread_id, thread->thread_name, thread->run_count, thread->run_cycles/1000, state_string);
 		
 		// Pad buffer
 		while ((buf_ptr - buf) % 120 != 0)
@@ -560,11 +587,17 @@ void thread_scheduler()
 		// The system timer will resume the scheduler when its interrupt occurs.
 		// This effectively keeps the CPU in low power mode unless there is work.
 		if (cur_idx == prv_idx)
+		{
+			sys_time_t before = sys_timer_get_time();
+
 			_wait_for_interrupt();
 
+			sys_time_t after = sys_timer_get_time();
+			perf_idle_ticks += (after - before);
+		}
+
 		// Get the current time
-		sys_time_t time;
-		sys_timer_get_time(&time);
+		sys_time_t time = sys_timer_get_time();
 
 		// Handle thread states. Note that all states should be handled here!
 		switch (thread->thread_state)
@@ -584,7 +617,7 @@ void thread_scheduler()
 
 		// Thread waiting for timespan
 		case THREAD_STATE_TIMED_WAIT:
-			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			if (thread->sched_time <= time)
 			{
 				thread->registers.r0 = 1;
 				break;
@@ -598,7 +631,7 @@ void thread_scheduler()
 				thread->registers.r0 = 1;
 				break;
 			}
-			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			if (thread->sched_time <= time)
 			{
 				thread->registers.r0 = 0;
 				break;
@@ -612,7 +645,7 @@ void thread_scheduler()
 				thread->registers.r0 = 1;
 				break;
 			}
-			if (sys_time_compare(&thread->sched_time, &time) <= 0)
+			if (thread->sched_time <= time)
 			{
 				thread->registers.r0 = 0;
 				break;
@@ -641,14 +674,21 @@ void thread_scheduler()
 		thread->wait_object = 0;
 
 		// Take start time
-		uint32_t start_time = sys_timer_uptime_usec();
+		sys_time_t before = sys_timer_get_time();
 
 		// Switch to the thread that was found
 		switch_to_thread(thread);
 
-		// Update performance data
+		// Take time elapsed
+		sys_time_t after = sys_timer_get_time();
+		sys_time_t elapsed = after - before;
+
+		// Update thread performance data
 		thread->run_count++;
-		thread->run_cycles += (sys_timer_uptime_usec() - start_time) * 600;
+		thread->run_cycles += elapsed;
+
+		// Update scheduler performance data
+		perf_exec_ticks += elapsed;
 	}
 }
 

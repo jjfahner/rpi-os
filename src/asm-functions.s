@@ -33,11 +33,7 @@
 .global _switch_to_thread
 .global _isb
 .global _dsb
-.global _uint64_add_32
-.global _uint64_add_64
-.global _sys_time_t_add_32
-.global _sys_time_t_add_64
-.global _sys_time_t_sub_64
+
 
 
 // Return the stack pointer value
@@ -252,3 +248,27 @@ _sys_time_t_sub_64:
 	pop		{r3,r4}
 	bx		lr
 
+
+
+//
+// Compare two sys_time_t objects
+//
+// EXTERN_C int32_t sys_time_compare(const sys_time_t* first, const sys_time_t* second);
+//
+/*
+sys_time_compare:
+	push	{r2, r3}
+	ldr		r2, [r0, #4]
+	ldr		r3, [r1, #4]
+	cmp		r2, r3
+	bne		sys_time_compare_result
+	ldr		r2, [r0]
+	ldr		r3, [r1]
+	cmp		r2, r3
+sys_time_compare_result:
+	moveq	r0, #0
+	movhi	r0, #1
+	movlo	r0, #0xFFFFFFFF
+	pop		{r2, r3}
+	bx		lr
+*/

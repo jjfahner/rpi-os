@@ -94,4 +94,4 @@ EXTERN_C uint32_t event_is_signaled(event_t* event);
 // Wait for an event to be signaled with optional timeout
 //
 //
-EXTERN_C uint32_t event_wait(event_t* event, const sys_time_t* timeout);
+EXTERN_C uint32_t event_wait(event_t* event, sys_time_t timeout);

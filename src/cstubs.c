@@ -208,7 +208,7 @@ caddr_t _sbrk(int incr)
 	prev_heap_end = heap_end;
 	heap_end += incr;
 
-	TRACE("_sbrk: Extending heap by %d KB, total size %d KB", incr / 1024, (char*)heap_end - (char*)&_end);
+	//TRACE("_sbrk: Extending heap by %d KB, total size %d KB", incr / 1024, (char*)heap_end - (char*)&_end);
 
 	return (caddr_t)prev_heap_end;
 }

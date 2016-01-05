@@ -29,19 +29,11 @@
 //
 typedef struct sys_timer_t
 {
-	uint32_t			interval;
-	uint32_t			count;
+	sys_time_t			interval;
 	sys_time_t			deadline;
+	uint32_t			count;
 	sys_timer_proc_t	callback;
 } sys_timer_t;
-
-
-
-//
-// Current uptime
-//
-static uint32_t sys_uptime_msec;
-static uint32_t sys_uptime_sec;
 
 
 
@@ -67,91 +59,16 @@ static uint32_t sys_timer_interval = 0x1000;
 // Note: since the clock is read in two consecutive cycles, it's not safe to read
 // it without ensuring they are in sync. This function addresses that concern.
 //
-void sys_timer_get_time(sys_time_t* time)
+sys_time_t sys_timer_get_time()
 {
+	uint32_t hi, lo;
+	
 	do {
-		time->hi = rpi_sys_timer->chi;
-		time->lo = rpi_sys_timer->clo;
-	} while (time->hi != rpi_sys_timer->chi);
-}
+		hi = rpi_sys_timer->chi;
+		lo = rpi_sys_timer->clo;
+	} while (hi != rpi_sys_timer->chi);
 
-
-
-//
-// Add microseconds to a sys_time_t
-//
-void sys_time_add_usecs(sys_time_t* time, uint32_t microseconds)
-{
-	_sys_time_t_add_64(time, microseconds, 0);
-}
-
-
-
-//
-// Add add_time to time
-//
-void sys_time_add_time(sys_time_t* time, const sys_time_t* add_time)
-{
-	_sys_time_t_add_64(time, add_time->lo, add_time->hi);
-}
-
-
-
-//
-// Subtract sub_time from time
-//
-void sys_time_subtract(sys_time_t* time, const sys_time_t* sub_time)
-{
-	_sys_time_t_sub_64(time, sub_time->lo, sub_time->hi);
-}
-
-
-
-//
-// Compare two sys_time_t structs
-//
-int32_t sys_time_compare(const sys_time_t* first, const sys_time_t* second)
-{
-	if (first->hi < second->hi)
-		return -1;
-	else if (first->hi > second->hi)
-		return 1;
-	else if (first->lo < second->lo)
-		return -1;
-	else if (first->lo > second->lo)
-		return 1;
-	else
-		return 0;
-}
-
-
-
-//
-// Current system uptime in microseconds, wraps after ~1.1 hours
-//
-uint32_t sys_timer_uptime_usec()
-{
-	return rpi_sys_timer->clo;
-}
-
-
-
-//
-// Current system uptime in milliseconds, wraps to zero after ~49.7 days
-//
-uint32_t sys_timer_uptime_msec()
-{
-	return sys_uptime_msec;
-}
-
-
-
-//
-// Current system uptime in seconds, wraps after ~196.1 years
-//
-uint32_t sys_timer_uptime_sec()
-{
-	return sys_uptime_sec;
+	return ((uint64_t)hi << 32) | lo;
 }
 
 
@@ -174,30 +91,6 @@ void sys_timer_wait_usec(uint32_t microseconds)
 void sys_timer_wait_msec(uint32_t milliseconds)
 {
 	sys_timer_wait_usec(milliseconds * 1000);
-}
-
-
-
-//
-// Set the next deadline on a timer
-//
-static void set_deadline(sys_timer_t* timer)
-{
-	// Copy previous deadline
-	sys_time_t cur = timer->deadline;
-
-	// Calculate interval
-	uint32_t remaining = UINT32_MAX - cur.lo;
-	if (remaining >= timer->interval)
-	{
-		timer->deadline.hi = cur.hi;
-		timer->deadline.lo = cur.lo + timer->interval;
-	}
-	else
-	{
-		timer->deadline.lo = timer->interval - remaining;
-		timer->deadline.hi = cur.hi + (timer->interval / UINT32_MAX);
-	}
 }
 
 
@@ -227,10 +120,7 @@ uint32_t sys_timer_install(uint32_t interval, uint32_t count, sys_timer_proc_t c
 			timer->interval = interval;
 			timer->count = count;
 			timer->callback = callback;
-
-			sys_timer_get_time(&timer->deadline);
-			set_deadline(timer);
-
+			timer->deadline = sys_timer_get_time() + timer->interval;
 			num_timers++;
 			break;
 		}
@@ -255,8 +145,7 @@ void invoke_timers()
 		return;
 
 	// Take current time for all timers
-	sys_time_t time;
-	sys_timer_get_time(&time);
+	sys_time_t time = sys_timer_get_time();
 
 	// Check timers
 	for (int i = 0; i < MAX_TIMERS; i++)
@@ -264,10 +153,10 @@ void invoke_timers()
 		// Check whether the timer is enabled and elapsed
 	if (timers[i].callback != NULL)
 		{
-			if (timers[i].deadline.hi <= time.hi && timers[i].deadline.lo <= time.lo)
+			if (timers[i].deadline < time)
 			{
-				// Calculate new deadline before processing the timer
-				set_deadline(&timers[i]);
+				// Determine new deadline before processing the timer
+				timers[i].deadline = sys_timer_get_time() + timers[i].interval;
 
 				// Invoke the callback
 				timers[i].callback(i);
@@ -277,8 +166,7 @@ void invoke_timers()
 				{
 					timers[i].interval = 0;
 					timers[i].count = 0;
-					timers[i].deadline.hi = 0;
-					timers[i].deadline.lo = 0;
+					timers[i].deadline = 0;
 					timers[i].callback = NULL;
 					--num_timers;
 				}
@@ -295,74 +183,16 @@ void invoke_timers()
 static inline void sys_timer_set_compare()
 {
 	// Initialize previous interrupt time with current time
-	static uint32_t prev_time = 0;
+	static sys_time_t prev_time = 0;
 	if (prev_time == 0)
 		prev_time = rpi_sys_timer->clo;
 
 	// Set next time as previous time plus interval
-	uint32_t next_time = (prev_time & ~(sys_timer_interval - 1)) + sys_timer_interval;
+	sys_time_t next_time = prev_time + sys_timer_interval;
 	rpi_sys_timer->c1 = next_time;
 
-	// Set previous time as current time
+	// Store scheduled time as previous time
 	prev_time = next_time;
-}
-
-
-
-//
-// Update system uptime
-//
-static inline void update_sys_uptime()
-{
-	// Previous time values
-	static uint32_t prv_time_usec = 0;
-	static uint32_t prv_time_msec = 0;
-
-	////////// First update uptime in milliseconds
-
-	// Get current system time in us
-	uint32_t cur_time_usec = rpi_sys_timer->clo;
-
-	// Calculate us difference with previous update
-	uint32_t diff_time_usec = prv_time_usec < cur_time_usec ?
-		cur_time_usec - prv_time_usec :				// Normal case
-		UINT32_MAX - prv_time_usec + cur_time_usec;	// Counter wrapped
-
-	// Early out if less than a millisecond elapsed
-	if (diff_time_usec < 1000)
-		return;
-
-	// Calculate number of whole milliseconds elapsed
-	uint32_t diff_time_ms = diff_time_usec / 1000;
-
-	// Update previous update value with number of whole milliseconds elapsed
-	prv_time_usec += diff_time_ms * 1000;
-
-	// Update uptime_ms
-	sys_uptime_msec += diff_time_ms;
-
-	////////// Then update uptime in seconds
-
-	// Get current uptime in ms
-	uint32_t cur_time_msec = sys_uptime_msec;
-
-	// Calculate ms difference with previous update
-	uint32_t diff_time_msec = prv_time_msec < sys_uptime_msec ?
-		cur_time_msec - prv_time_msec :				// Normal case
-		UINT32_MAX - prv_time_msec + cur_time_msec;	// Counter wrapped
-
-	// Early out if less than a second elapsed
-	if (diff_time_msec < 1000)
-		return;
-
-	// Calculate number of whole seconds elapsed
-	uint32_t diff_time_sec = diff_time_msec / 1000;
-
-	// Update previous update value with number of whole seconds elapsed
-	prv_time_msec += diff_time_sec * 1000;
-
-	// Update uptime_ms
-	sys_uptime_sec += diff_time_sec;
 }
 
 
@@ -374,9 +204,6 @@ void sys_timer_interrupt()
 {
 	// Clear the interrupt bit
 	rpi_sys_timer->cs = (1 << 1);
-
-	// Update uptime
-	update_sys_uptime();
 
 	// Invoke the timers
 	invoke_timers();

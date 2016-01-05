@@ -68,7 +68,7 @@ EXTERN_C uint32_t mutex_trylock(mutex_t* mutex);
 //
 // Lock a mutex
 //
-EXTERN_C uint32_t mutex_lock(mutex_t* mutex, const sys_time_t* timeout);
+EXTERN_C uint32_t mutex_lock(mutex_t* mutex, sys_time_t timeout);
 
 
 

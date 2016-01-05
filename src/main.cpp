@@ -99,7 +99,7 @@ static void time_thread(uint32_t thread_arg)
 
 
 static uint32_t thread_counter = 0;
-static void thread_fun(uint32_t);
+static void worker_thread(uint32_t);
 
 static mutex_t* test_mutex;
 
@@ -107,22 +107,25 @@ void create_worker()
 {
 	char buf[20];
 	sprintf(buf, "Worker %u", thread_counter);
-	thread_create(4 * 1024, buf, thread_fun, thread_counter++);
+	thread_create(4 * 1024, buf, worker_thread, thread_counter++);
 }
 
 
 
-static void thread_fun(uint32_t thread_arg)
+static void worker_thread(uint32_t thread_arg)
 {
-	sys_time_t timeout = { 10000000, 0 };
-	uint32_t locked = mutex_lock(test_mutex, &timeout);
+	uint32_t locked = mutex_lock(test_mutex, 10000000);
 
 	int result = 0;
 	
 	for (int l = 0; l < 2500; l++)
 	{
-		for (int i = 0; i < 25000; i++)
+		for (int i = 1; i < 2500000; i++)
+		{
 			result += i;
+			result /= i;
+			result %= 1;
+		}
 		thread_sleep_usec(750);
 	}
 
@@ -148,7 +151,7 @@ static void producer_thread(uint32_t thread_arg)
 		for (int i = 0; i < 6; i++)
 		{
 			event_signal(test_event);
-			thread_sleep_msec(i * 500);
+			thread_sleep_msec(i * 1000);
 		}
 	}
 }
@@ -159,14 +162,13 @@ static void consumer_thread(uint32_t thread_arg)
 {
 	while (1)
 	{
-		event_wait(test_event, NULL);
+		event_wait(test_event, TIMEOUT_INFINITE);
 		thread_sleep_msec(5000);
 	}
 }
 
 
 //////////////////////////////////////////////////////////////////////////
-
 
 
 //
@@ -195,7 +197,7 @@ extern "C" void rpi_main(uint32_t thread_arg)
 	}
 
 	// Create some worker threads
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 15; i++)
 	{
 		create_worker();
 		thread_sleep_usec(5000);

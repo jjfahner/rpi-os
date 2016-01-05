@@ -258,7 +258,7 @@ void uart_puts_nolock(const char *str)
 //
 #ifdef UART_USE_LOCK
 	#define UART_TRY_LOCK() if (!mutex_trylock(uart_mutex)) return 0
-	#define UART_LOCK()		mutex_lock(uart_mutex, NULL)
+	#define UART_LOCK()		mutex_lock(uart_mutex, TIMEOUT_INFINITE)
 	#define UART_UNLOCK()	mutex_unlock(uart_mutex)
 #else
 	#define UART_TRY_LOCK()
